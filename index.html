@@ -7,571 +7,162 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
-  /* ── FONTS ── */
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;700;800&display=swap');
-
-  /* ── ROOT ── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
-    --bg: #080c0f;
-    --surface: #0d1318;
-    --surface2: #131c23;
-    --border: #1e2d38;
-    --border2: #243545;
-    --accent: #00d4ff;
-    --accent2: #ff6b35;
-    --green: #39ff6e;
-    --yellow: #ffd60a;
-    --red: #ff3b5c;
-    --text: #c8dce8;
-    --muted: #4a6272;
+    --bg: #080c0f; --surface: #0d1318; --surface2: #131c23;
+    --border: #1e2d38; --border2: #243545;
+    --accent: #00d4ff; --accent2: #ff6b35;
+    --green: #39ff6e; --yellow: #ffd60a; --red: #ff3b5c;
+    --text: #c8dce8; --muted: #4a6272;
     --font-mono: 'JetBrains Mono', monospace;
     --font-display: 'Syne', sans-serif;
   }
+  html, body { background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 13px; height: 100%; overflow: hidden; }
+  body::after { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px); pointer-events:none; z-index:9999; }
 
-  html, body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    height: 100%;
-    overflow: hidden;
-  }
+  #app { display:grid; grid-template-rows:52px 1fr; grid-template-columns:260px 1fr; height:100vh; }
 
-  /* ── SCANLINE EFFECT ── */
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
-  }
-
-  /* ── LAYOUT ── */
-  #app {
-    display: grid;
-    grid-template-rows: 52px 1fr;
-    grid-template-columns: 260px 1fr;
-    height: 100vh;
-  }
-
-  /* ── HEADER ── */
-  header {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding: 0 20px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    position: relative;
-    overflow: hidden;
-  }
-  header::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: var(--accent);
-    box-shadow: 0 0 20px var(--accent);
-  }
-  .logo {
-    font-family: var(--font-display);
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    color: #fff;
-  }
-  .logo span { color: var(--accent); }
-  .header-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    color: var(--muted);
-    margin-left: auto;
-  }
-  .pulse {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: pulse 2s infinite;
-  }
+  header { grid-column:1/-1; display:flex; align-items:center; gap:24px; padding:0 20px; background:var(--surface); border-bottom:1px solid var(--border); position:relative; overflow:hidden; }
+  header::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent); box-shadow:0 0 20px var(--accent); }
+  .logo { font-family:var(--font-display); font-size:18px; font-weight:800; letter-spacing:-0.5px; color:#fff; }
+  .logo span { color:var(--accent); }
+  .header-status { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); margin-left:auto; }
+  .pulse { width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  #clock { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
 
-  #clock {
-    font-size: 12px;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-  }
+  aside { background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+  .sidebar-section { padding:12px 16px 8px; font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); }
+  #machine-list { flex:1; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; }
+  .machine-item { display:flex; align-items:center; gap:10px; padding:10px 16px; cursor:pointer; border-left:3px solid transparent; transition:all 0.15s; border-bottom:1px solid var(--border); }
+  .machine-item:hover { background:var(--surface2); }
+  .machine-item.active { background:var(--surface2); border-left-color:var(--accent); }
+  .machine-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .machine-dot.online  { background:var(--green);  box-shadow:0 0 6px var(--green); }
+  .machine-dot.offline { background:var(--muted); }
+  .machine-dot.idle    { background:var(--yellow); }
+  .machine-name { font-size:12px; font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .machine-os   { font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-  /* ── SIDEBAR ── */
-  aside {
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+  main { overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; background:var(--bg); }
 
-  .sidebar-section {
-    padding: 12px 16px 8px;
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    border-bottom: 1px solid var(--border);
-  }
+  /* LOGIN */
+  #login-screen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:1000; flex-direction:column; gap:32px; }
+  .login-card { background:var(--surface); border:1px solid var(--border2); padding:40px; width:360px; position:relative; }
+  .login-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--accent),transparent); }
+  .login-title { font-family:var(--font-display); font-size:22px; font-weight:800; color:#fff; margin-bottom:4px; }
+  .login-sub  { color:var(--muted); font-size:11px; margin-bottom:28px; }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .field input { width:100%; background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--font-mono); font-size:13px; padding:9px 12px; outline:none; transition:border-color 0.15s; }
+  .field input:focus { border-color:var(--accent); }
+  .btn { width:100%; background:var(--accent); color:#000; font-family:var(--font-mono); font-size:12px; font-weight:700; letter-spacing:1px; text-transform:uppercase; border:none; padding:11px; cursor:pointer; transition:all 0.15s; margin-top:8px; }
+  .btn:hover { background:#fff; }
+  .btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .login-error { color:var(--red); font-size:11px; margin-top:10px; min-height:16px; }
+  .config-hint { font-size:10px; color:var(--muted); margin-bottom:20px; line-height:1.6; }
 
-  #machine-list {
-    flex: 1;
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border2) transparent;
-  }
+  /* PANELS */
+  .panel-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border-bottom:1px solid var(--border); }
+  .metric-card { background:var(--surface); padding:16px 20px; position:relative; }
+  .metric-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .metric-value { font-size:32px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1; margin-bottom:6px; }
+  .metric-bar { height:3px; background:var(--border2); margin-top:8px; }
+  .metric-bar-fill { height:100%; transition:width 0.5s ease; }
+  .metric-value.cpu  { color:var(--accent); }
+  .metric-value.ram  { color:var(--green); }
+  .metric-value.disk { color:var(--accent2); }
 
-  .machine-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 16px;
-    cursor: pointer;
-    border-left: 3px solid transparent;
-    transition: all 0.15s;
-    border-bottom: 1px solid var(--border);
-  }
-  .machine-item:hover { background: var(--surface2); }
-  .machine-item.active {
-    background: var(--surface2);
-    border-left-color: var(--accent);
-  }
-  .machine-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .machine-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .machine-dot.offline { background: var(--muted); }
-  .machine-dot.idle { background: var(--yellow); }
-  .machine-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: #fff;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .machine-os {
-    font-size: 10px;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  .content-section { padding:20px; border-bottom:1px solid var(--border); }
+  .section-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .section-title { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
 
-  /* ── MAIN CONTENT ── */
-  main {
-    overflow-y: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border2) transparent;
-    background: var(--bg);
-  }
+  /* TERMINAL */
+  .terminal { background:#050809; border:1px solid var(--border2); font-family:var(--font-mono); font-size:12px; }
+  .terminal-output { height:320px; overflow-y:auto; padding:12px; color:var(--green); line-height:1.7; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; }
+  .terminal-output .cmd-line  { color:var(--accent); }
+  .terminal-output .err-line  { color:var(--red); }
+  .terminal-output .info-line { color:var(--muted); }
+  .terminal-input-row { display:flex; border-top:1px solid var(--border); }
+  .terminal-prompt { padding:8px 10px; color:var(--accent); user-select:none; flex-shrink:0; }
+  .terminal-input { flex:1; background:transparent; border:none; color:var(--text); font-family:var(--font-mono); font-size:12px; padding:8px 0; outline:none; }
+  .btn-run { background:var(--accent); color:#000; border:none; padding:0 16px; font-family:var(--font-mono); font-size:11px; font-weight:700; cursor:pointer; letter-spacing:1px; }
+  .btn-run:hover { background:#fff; }
 
-  /* ── LOGIN ── */
-  #login-screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    flex-direction: column;
-    gap: 32px;
-  }
-  .login-card {
-    background: var(--surface);
-    border: 1px solid var(--border2);
-    padding: 40px;
-    width: 360px;
-    position: relative;
-  }
-  .login-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, var(--accent), transparent);
-  }
-  .login-title {
-    font-family: var(--font-display);
-    font-size: 22px;
-    font-weight: 800;
-    color: #fff;
-    margin-bottom: 4px;
-  }
-  .login-sub { color: var(--muted); font-size: 11px; margin-bottom: 28px; }
+  /* FILE MANAGER */
+  .file-nav { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .file-path-input { flex:1; background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--font-mono); font-size:12px; padding:7px 10px; outline:none; }
+  .file-path-input:focus { border-color:var(--accent); }
+  .btn-sm { background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--font-mono); font-size:11px; padding:7px 12px; cursor:pointer; white-space:nowrap; }
+  .btn-sm:hover { border-color:var(--accent); color:var(--accent); }
 
-  .field { margin-bottom: 16px; }
-  .field label {
-    display: block;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 6px;
-  }
-  .field input {
-    width: 100%;
-    background: var(--surface2);
-    border: 1px solid var(--border2);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    padding: 9px 12px;
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  .field input:focus { border-color: var(--accent); }
+  /* TABLES */
+  .data-table { width:100%; border-collapse:collapse; }
+  .data-table th { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--muted); text-align:left; padding:6px 10px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); cursor:pointer; user-select:none; }
+  .data-table th:hover { color:var(--accent); }
+  .data-table th.sorted-asc::after  { content:' ▲'; color:var(--accent); }
+  .data-table th.sorted-desc::after { content:' ▼'; color:var(--accent); }
+  .data-table td { padding:6px 10px; border-bottom:1px solid var(--border); font-size:12px; color:var(--text); }
+  .data-table tr:hover td { background:var(--surface2); cursor:default; }
+  .data-table .col-num { color:var(--muted); font-variant-numeric:tabular-nums; text-align:right; }
 
-  .btn {
-    width: 100%;
-    background: var(--accent);
-    color: #000;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    border: none;
-    padding: 11px;
-    cursor: pointer;
-    transition: all 0.15s;
-    margin-top: 8px;
-  }
-  .btn:hover { background: #fff; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* TASK MANAGER */
+  .tm-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .tm-search { flex:1; min-width:160px; background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--font-mono); font-size:12px; padding:7px 10px; outline:none; }
+  .tm-search:focus { border-color:var(--accent); }
+  .tm-count { font-size:11px; color:var(--muted); white-space:nowrap; }
+  .tm-table-wrap { max-height:420px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; }
+  .kill-btn { background:transparent; border:1px solid var(--red); color:var(--red); font-family:var(--font-mono); font-size:10px; padding:2px 8px; cursor:pointer; opacity:0.6; }
+  .kill-btn:hover { opacity:1; background:rgba(255,59,92,0.1); }
+  .mem-bar { display:inline-block; height:6px; background:var(--accent); opacity:0.5; vertical-align:middle; margin-left:6px; }
 
-  .login-error {
-    color: var(--red);
-    font-size: 11px;
-    margin-top: 10px;
-    min-height: 16px;
-  }
+  /* ALERTS */
+  .alert-list { display:flex; flex-direction:column; gap:6px; }
+  .alert-item { display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--surface2); border-left:3px solid var(--red); }
+  .alert-item.cpu  { border-color:var(--accent); }
+  .alert-item.ram  { border-color:var(--green); }
+  .alert-item.disk { border-color:var(--accent2); }
+  .alert-msg  { flex:1; font-size:12px; }
+  .alert-time { color:var(--muted); font-size:10px; }
+  .alert-ack  { background:transparent; border:1px solid var(--border2); color:var(--muted); font-family:var(--font-mono); font-size:10px; padding:3px 8px; cursor:pointer; }
+  .alert-ack:hover { border-color:var(--green); color:var(--green); }
 
-  /* CONFIG INPUT */
-  .config-hint {
-    font-size: 10px;
-    color: var(--muted);
-    margin-bottom: 20px;
-    line-height: 1.6;
-  }
+  .chart-wrap { height:120px; position:relative; }
+  .empty-state { text-align:center; padding:40px; color:var(--muted); font-size:12px; }
+  .empty-state::before { content:'//'; display:block; font-size:24px; margin-bottom:12px; color:var(--border2); }
 
-  /* ── DASHBOARD PANELS ── */
-  .panel-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1px;
-    background: var(--border);
-    border-bottom: 1px solid var(--border);
-  }
+  .machine-info-bar { display:flex; align-items:center; gap:20px; padding:10px 20px; background:var(--surface); border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); }
+  .machine-info-bar strong { color:var(--text); }
 
-  .metric-card {
-    background: var(--surface);
-    padding: 16px 20px;
-    position: relative;
-  }
-  .metric-label {
-    font-size: 9px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-  .metric-value {
-    font-size: 32px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-    margin-bottom: 6px;
-  }
-  .metric-bar {
-    height: 3px;
-    background: var(--border2);
-    margin-top: 8px;
-  }
-  .metric-bar-fill {
-    height: 100%;
-    transition: width 0.5s ease;
-  }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface); }
+  .tab { padding:10px 20px; font-size:11px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; border-bottom:2px solid transparent; color:var(--muted); transition:all 0.15s; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab:hover  { color:var(--text); }
 
-  .metric-value.cpu { color: var(--accent); }
-  .metric-value.ram { color: var(--green); }
-  .metric-value.disk { color: var(--accent2); }
-
-  /* ── CONTENT AREAS ── */
-  .content-section {
-    padding: 20px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-  .section-title {
-    font-size: 10px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  /* ── TERMINAL ── */
-  .terminal {
-    background: #050809;
-    border: 1px solid var(--border2);
-    font-family: var(--font-mono);
-    font-size: 12px;
-  }
-  .terminal-output {
-    height: 200px;
-    overflow-y: auto;
-    padding: 12px;
-    color: var(--green);
-    line-height: 1.7;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border2) transparent;
-  }
-  .terminal-output .cmd-line { color: var(--accent); }
-  .terminal-output .err-line { color: var(--red); }
-  .terminal-output .info-line { color: var(--muted); }
-
-  .terminal-input-row {
-    display: flex;
-    border-top: 1px solid var(--border);
-  }
-  .terminal-prompt {
-    padding: 8px 10px;
-    color: var(--accent);
-    user-select: none;
-    flex-shrink: 0;
-  }
-  .terminal-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 8px 0;
-    outline: none;
-  }
-  .btn-run {
-    background: var(--accent);
-    color: #000;
-    border: none;
-    padding: 0 16px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    letter-spacing: 1px;
-  }
-  .btn-run:hover { background: #fff; }
-
-  /* ── FILE MANAGER ── */
-  .file-nav {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-  .file-path-input {
-    flex: 1;
-    background: var(--surface2);
-    border: 1px solid var(--border2);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 7px 10px;
-    outline: none;
-  }
-  .file-path-input:focus { border-color: var(--accent); }
-  .btn-sm {
-    background: var(--surface2);
-    border: 1px solid var(--border2);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 7px 12px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
-
-  .file-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .file-table th {
-    font-size: 9px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--muted);
-    text-align: left;
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border);
-  }
-  .file-table td {
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-    color: var(--text);
-  }
-  .file-table tr:hover td { background: var(--surface2); cursor: pointer; }
-  .file-icon { margin-right: 6px; }
-  .file-size { color: var(--muted); font-variant-numeric: tabular-nums; }
-
-  /* ── ALERTS ── */
-  .alert-list { display: flex; flex-direction: column; gap: 6px; }
-  .alert-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 14px;
-    background: var(--surface2);
-    border-left: 3px solid var(--red);
-  }
-  .alert-item.cpu { border-color: var(--accent); }
-  .alert-item.ram { border-color: var(--green); }
-  .alert-item.disk { border-color: var(--accent2); }
-  .alert-msg { flex: 1; font-size: 12px; }
-  .alert-time { color: var(--muted); font-size: 10px; }
-  .alert-ack {
-    background: transparent;
-    border: 1px solid var(--border2);
-    color: var(--muted);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 8px;
-    cursor: pointer;
-  }
-  .alert-ack:hover { border-color: var(--green); color: var(--green); }
-
-  /* ── CHART ── */
-  .chart-wrap { height: 120px; position: relative; }
-
-  /* ── EMPTY STATE ── */
-  .empty-state {
-    text-align: center;
-    padding: 40px;
-    color: var(--muted);
-    font-size: 12px;
-  }
-  .empty-state::before {
-    content: '//';
-    display: block;
-    font-size: 24px;
-    margin-bottom: 12px;
-    color: var(--border2);
-  }
-
-  /* ── MACHINE INFO BAR ── */
-  .machine-info-bar {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 10px 20px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .machine-info-bar strong { color: var(--text); }
-
-  /* ── TABS ── */
-  .tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-  }
-  .tab {
-    padding: 10px 20px;
-    font-size: 11px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    color: var(--muted);
-    transition: all 0.15s;
-  }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab:hover { color: var(--text); }
-
-  /* ── NO MACHINE SELECTED ── */
-  .no-selection {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: var(--muted);
-    gap: 16px;
-  }
-  .no-selection-icon { font-size: 48px; opacity: 0.2; }
-  .no-selection-text { font-size: 13px; }
-
-  .blink { animation: blink 1s step-end infinite; }
+  .no-selection { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--muted); gap:16px; }
+  .no-selection-icon { font-size:48px; opacity:0.2; }
+  .blink { animation:blink 1s step-end infinite; }
   @keyframes blink { 50%{opacity:0} }
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="login-screen">
   <div class="login-card">
     <div class="login-title">PC<span>Manager</span></div>
     <div class="login-sub">CONTROL PANEL — AUTHENTICATE TO CONTINUE</div>
-
-    <div class="config-hint">
-      Renseignez vos clés Supabase. Elles sont stockées localement dans votre navigateur.
-    </div>
-
-    <div class="field">
-      <label>Supabase URL</label>
-      <input type="text" id="sb-url" placeholder="https://xxxx.supabase.co" />
-    </div>
-    <div class="field">
-      <label>Anon Key</label>
-      <input type="text" id="sb-key" placeholder="eyJ..." />
-    </div>
-    <div class="field">
-      <label>Email</label>
-      <input type="email" id="login-email" placeholder="vous@email.com" />
-    </div>
-    <div class="field">
-      <label>Mot de passe</label>
-      <input type="password" id="login-password" />
-    </div>
+    <div class="config-hint">Renseignez vos clés Supabase. Elles sont mémorisées dans votre navigateur.</div>
+    <div class="field"><label>Supabase URL</label><input type="text" id="sb-url" placeholder="https://xxxx.supabase.co" /></div>
+    <div class="field"><label>Anon Key</label><input type="text" id="sb-key" placeholder="eyJ..." /></div>
+    <div class="field"><label>Email</label><input type="email" id="login-email" placeholder="vous@email.com" /></div>
+    <div class="field"><label>Mot de passe</label><input type="password" id="login-password" /></div>
     <button class="btn" id="login-btn" onclick="doLogin()">CONNEXION</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
-<!-- APP -->
 <div id="app" style="display:none">
-  <!-- Header -->
   <header>
     <div class="logo">PC<span>Manager</span></div>
     <div class="header-status">
@@ -581,18 +172,14 @@
     <div id="clock"></div>
     <button class="btn-sm" onclick="doLogout()" style="margin-left:12px;padding:5px 10px">LOGOUT</button>
   </header>
-
-  <!-- Sidebar -->
   <aside>
     <div class="sidebar-section">MACHINES (<span id="machine-count">0</span>)</div>
     <div id="machine-list"></div>
   </aside>
-
-  <!-- Main -->
   <main id="main-content">
     <div class="no-selection">
       <div class="no-selection-icon">⬡</div>
-      <div class="no-selection-text">Sélectionnez une machine<span class="blink">_</span></div>
+      <div style="font-size:13px">Sélectionnez une machine<span class="blink">_</span></div>
     </div>
   </main>
 </div>
@@ -601,156 +188,117 @@
 // ============================================================
 // GLOBALS
 // ============================================================
-let sb = null;
-let machines = [];
-let selectedMachine = null;
-let refreshInterval = null;
-let cpuChart = null;
-let cpuHistory = Array(30).fill(0);
-let currentTab = 'overview';
+let sb = null, machines = [], selectedMachine = null;
+let cpuChart = null, cpuHistory = Array(30).fill(0), currentTab = 'overview';
+// task manager state
+let tmProcesses = [], tmSort = { col: 'mem_mb', dir: 'desc' }, tmFilter = '';
 
 // ============================================================
 // CLOCK
 // ============================================================
-function updateClock() {
-  document.getElementById('clock').textContent = new Date().toLocaleTimeString('fr-FR');
-}
-setInterval(updateClock, 1000);
-updateClock();
+setInterval(() => document.getElementById('clock').textContent = new Date().toLocaleTimeString('fr-FR'), 1000);
+document.getElementById('clock').textContent = new Date().toLocaleTimeString('fr-FR');
 
 // ============================================================
 // LOGIN
 // ============================================================
 async function doLogin() {
-  const url = document.getElementById('sb-url').value.trim();
-  const key = document.getElementById('sb-key').value.trim();
+  const url   = document.getElementById('sb-url').value.trim();
+  const key   = document.getElementById('sb-key').value.trim();
   const email = document.getElementById('login-email').value.trim();
-  const pw = document.getElementById('login-password').value;
+  const pw    = document.getElementById('login-password').value;
   const errEl = document.getElementById('login-error');
   errEl.textContent = '';
-
-  if (!url || !key || !email || !pw) {
-    errEl.textContent = 'Tous les champs sont requis.';
-    return;
-  }
-
+  if (!url || !key || !email || !pw) { errEl.textContent = 'Tous les champs sont requis.'; return; }
   document.getElementById('login-btn').disabled = true;
   document.getElementById('login-btn').textContent = 'CONNEXION...';
-
   try {
     sb = supabase.createClient(url, key);
     const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
     if (error) throw error;
-
-    // Sauvegarder les clés
     localStorage.setItem('pcm_url', url);
     localStorage.setItem('pcm_key', key);
-
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app').style.display = 'grid';
     startApp();
-  } catch(e) {
-    errEl.textContent = e.message || 'Erreur de connexion.';
-  } finally {
+  } catch(e) { errEl.textContent = e.message || 'Erreur de connexion.'; }
+  finally {
     document.getElementById('login-btn').disabled = false;
     document.getElementById('login-btn').textContent = 'CONNEXION';
   }
 }
-
-function doLogout() {
-  if (sb) sb.auth.signOut();
-  location.reload();
-}
-
-// Pré-remplir depuis localStorage
+function doLogout() { if (sb) sb.auth.signOut(); location.reload(); }
 window.addEventListener('load', () => {
-  const url = localStorage.getItem('pcm_url');
-  const key = localStorage.getItem('pcm_key');
+  const url = localStorage.getItem('pcm_url'), key = localStorage.getItem('pcm_key');
   if (url) document.getElementById('sb-url').value = url;
   if (key) document.getElementById('sb-key').value = key;
 });
 
 // ============================================================
-// APP START
+// APP
 // ============================================================
 function startApp() {
   loadMachines();
-  refreshInterval = setInterval(refreshData, 5000);
+  setInterval(async () => {
+    await loadMachines();
+    if (selectedMachine) {
+      const updated = machines.find(m => m.id === selectedMachine.id);
+      if (updated) { selectedMachine = updated; refreshMainPanel(); }
+    }
+  }, 5000);
 }
 
-async function refreshData() {
-  await loadMachines();
-  if (selectedMachine) {
-    const updated = machines.find(m => m.id === selectedMachine.id);
-    if (updated) { selectedMachine = updated; refreshMainPanel(); }
-  }
-}
-
-// ============================================================
-// MACHINES
-// ============================================================
 async function loadMachines() {
   const { data } = await sb.from('machines').select('*').order('name');
   if (!data) return;
-
-  // Considérer offline si last_seen > 20 secondes
   const now = Date.now();
   machines = data.map(m => {
-    const seenAgo = (now - new Date(m.last_seen)) / 1000;
-    if (seenAgo > 20 && m.status === 'online') m.status = 'offline';
+    if ((now - new Date(m.last_seen)) / 1000 > 20 && m.status === 'online') m.status = 'offline';
     return m;
   });
-
-  const list = document.getElementById('machine-list');
   const online = machines.filter(m => m.status === 'online').length;
   document.getElementById('online-count').textContent = online;
   document.getElementById('machine-count').textContent = machines.length;
-
-  list.innerHTML = machines.map(m => `
-    <div class="machine-item ${selectedMachine?.id === m.id ? 'active' : ''}"
-         onclick="selectMachine('${m.id}')">
+  document.getElementById('machine-list').innerHTML = machines.map(m => `
+    <div class="machine-item ${selectedMachine?.id === m.id ? 'active' : ''}" onclick="selectMachine('${m.id}')">
       <div class="machine-dot ${m.status}"></div>
       <div>
         <div class="machine-name">${m.name}</div>
         <div class="machine-os">${m.os?.split(' ').slice(0,2).join(' ') || '—'}</div>
       </div>
-    </div>
-  `).join('');
+    </div>`).join('');
 }
 
 function selectMachine(id) {
   selectedMachine = machines.find(m => m.id === id);
   currentTab = 'overview';
   cpuHistory = Array(30).fill(0);
+  tmProcesses = []; tmFilter = '';
   if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
   loadMachines();
   renderMainPanel();
 }
 
 // ============================================================
-// MAIN PANEL RENDER
+// MAIN PANEL
 // ============================================================
+const TABS = ['overview', 'terminal', 'tasks', 'files', 'alerts'];
+const TAB_LABELS = ['VUE D\'ENSEMBLE', 'TERMINAL', 'TÂCHES', 'FICHIERS', 'ALERTES'];
+
 function renderMainPanel() {
   const m = selectedMachine;
-  const main = document.getElementById('main-content');
-
-  main.innerHTML = `
+  document.getElementById('main-content').innerHTML = `
     <div class="machine-info-bar">
       <span><strong>${m.name}</strong></span>
       <span>IP: <strong>${m.ip_local || '—'}</strong></span>
       <span>OS: <strong>${m.os?.split(' ').slice(0,2).join(' ') || '—'}</strong></span>
-      <span>Statut: <strong style="color:${m.status === 'online' ? 'var(--green)' : 'var(--red)'}">${m.status.toUpperCase()}</strong></span>
+      <span>Statut: <strong style="color:${m.status==='online'?'var(--green)':'var(--red)'}">${m.status.toUpperCase()}</strong></span>
       <span>Vu: <strong>${timeAgo(m.last_seen)}</strong></span>
     </div>
     <div class="tabs">
-      <div class="tab ${currentTab === 'overview' ? 'active' : ''}" onclick="switchTab('overview')">VUE D'ENSEMBLE</div>
-      <div class="tab ${currentTab === 'terminal' ? 'active' : ''}" onclick="switchTab('terminal')">TERMINAL</div>
-      <div class="tab ${currentTab === 'files' ? 'active' : ''}" onclick="switchTab('files')">FICHIERS</div>
-      <div class="tab ${currentTab === 'alerts' ? 'active' : ''}" onclick="switchTab('alerts')">ALERTES</div>
+      ${TABS.map((t,i) => `<div class="tab ${currentTab===t?'active':''}" onclick="switchTab('${t}')">${TAB_LABELS[i]}</div>`).join('')}
     </div>
-    <div id="tab-content"></div>
-  `;
-
+    <div id="tab-content"></div>`;
   loadTabContent();
 }
 
@@ -761,29 +309,17 @@ function refreshMainPanel() {
   const m = selectedMachine;
   bar.innerHTML = `
     <span><strong>${m.name}</strong></span>
-    <span>IP: <strong>${m.ip_local || '—'}</strong></span>
-    <span>OS: <strong>${m.os?.split(' ').slice(0,2).join(' ') || '—'}</strong></span>
-    <span>Statut: <strong style="color:${m.status === 'online' ? 'var(--green)' : 'var(--red)'}">${m.status.toUpperCase()}</strong></span>
-    <span>Vu: <strong>${timeAgo(m.last_seen)}</strong></span>
-  `;
+    <span>IP: <strong>${m.ip_local||'—'}</strong></span>
+    <span>OS: <strong>${m.os?.split(' ').slice(0,2).join(' ')||'—'}</strong></span>
+    <span>Statut: <strong style="color:${m.status==='online'?'var(--green)':'var(--red)'}">${m.status.toUpperCase()}</strong></span>
+    <span>Vu: <strong>${timeAgo(m.last_seen)}</strong></span>`;
   if (currentTab === 'overview') loadTabContent();
-  if (currentTab === 'alerts') loadAlerts();
+  if (currentTab === 'alerts')   loadAlerts();
 }
 
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => {
-    t.classList.toggle('active', t.textContent.toLowerCase().includes(tab) || 
-      (tab === 'overview' && t.textContent.includes('ENSEMBLE')) ||
-      (tab === 'terminal' && t.textContent === 'TERMINAL') ||
-      (tab === 'files' && t.textContent === 'FICHIERS') ||
-      (tab === 'alerts' && t.textContent === 'ALERTES'));
-  });
-  // fix tab class active
-  const tabEls = document.querySelectorAll('.tab');
-  tabEls.forEach(t => t.classList.remove('active'));
-  const idx = ['overview','terminal','files','alerts'].indexOf(tab);
-  if (idx >= 0) tabEls[idx].classList.add('active');
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', TABS[i] === tab));
   loadTabContent();
 }
 
@@ -793,24 +329,20 @@ async function loadTabContent() {
   if (!el) return;
   if (currentTab === 'overview') await loadOverview(el);
   if (currentTab === 'terminal') await loadTerminal(el);
-  if (currentTab === 'files') await loadFiles(el);
-  if (currentTab === 'alerts') await loadAlerts(el);
+  if (currentTab === 'tasks')    await loadTaskManager(el);
+  if (currentTab === 'files')    await loadFiles(el);
+  if (currentTab === 'alerts')   await loadAlerts(el);
 }
 
 // ============================================================
 // OVERVIEW
 // ============================================================
 async function loadOverview(el) {
-  const { data: metrics } = await sb.from('metrics')
-    .select('*')
-    .eq('machine_id', selectedMachine.id)
-    .order('recorded_at', { ascending: false })
-    .limit(1);
-
+  const { data: metrics } = await sb.from('metrics').select('*')
+    .eq('machine_id', selectedMachine.id).order('recorded_at',{ascending:false}).limit(1);
   const latest = metrics?.[0];
-
-  const cpu = latest?.cpu_percent?.toFixed(1) ?? '--';
-  const ram = latest?.ram_percent?.toFixed(1) ?? '--';
+  const cpu  = latest?.cpu_percent?.toFixed(1)  ?? '--';
+  const ram  = latest?.ram_percent?.toFixed(1)  ?? '--';
   const disk = latest?.disk_percent?.toFixed(1) ?? '--';
 
   el.innerHTML = `
@@ -824,100 +356,51 @@ async function loadOverview(el) {
       <div class="metric-card">
         <div class="metric-label">RAM</div>
         <div class="metric-value ram">${ram}<span style="font-size:14px;font-weight:300">%</span></div>
-        <div style="font-size:10px;color:var(--muted)">${latest ? `${latest.ram_used_mb} / ${latest.ram_total_mb} MB` : '—'}</div>
+        <div style="font-size:10px;color:var(--muted)">${latest?`${latest.ram_used_mb} / ${latest.ram_total_mb} MB`:'—'}</div>
         <div class="metric-bar"><div class="metric-bar-fill" style="width:${ram}%;background:var(--green)"></div></div>
       </div>
       <div class="metric-card">
         <div class="metric-label">DISQUE C:</div>
         <div class="metric-value disk">${disk}<span style="font-size:14px;font-weight:300">%</span></div>
-        <div style="font-size:10px;color:var(--muted)">${latest ? `${latest.disk_used_gb} / ${latest.disk_total_gb} GB` : '—'}</div>
+        <div style="font-size:10px;color:var(--muted)">${latest?`${latest.disk_used_gb} / ${latest.disk_total_gb} GB`:'—'}</div>
         <div class="metric-bar"><div class="metric-bar-fill" style="width:${disk}%;background:var(--accent2)"></div></div>
       </div>
     </div>
     <div class="content-section">
-      <div class="section-header">
-        <span class="section-title">CPU — Historique (30 dernières mesures)</span>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="cpu-chart"></canvas>
-      </div>
+      <div class="section-header"><span class="section-title">CPU — Historique (30 mesures)</span></div>
+      <div class="chart-wrap"><canvas id="cpu-chart"></canvas></div>
     </div>
     <div class="content-section">
-      <div class="section-header">
-        <span class="section-title">Dernières commandes</span>
-      </div>
+      <div class="section-header"><span class="section-title">Dernières commandes</span></div>
       <div id="recent-commands"></div>
-    </div>
-  `;
+    </div>`;
 
-  // Load CPU history
-  const { data: hist } = await sb.from('metrics')
-    .select('cpu_percent, recorded_at')
-    .eq('machine_id', selectedMachine.id)
-    .order('recorded_at', { ascending: false })
-    .limit(30);
-
-  if (hist) {
-    cpuHistory = hist.reverse().map(h => h.cpu_percent);
-  }
+  const { data: hist } = await sb.from('metrics').select('cpu_percent')
+    .eq('machine_id', selectedMachine.id).order('recorded_at',{ascending:false}).limit(30);
+  if (hist) cpuHistory = hist.reverse().map(h => h.cpu_percent);
   renderCpuChart();
 
-  // Recent commands
-  const { data: cmds } = await sb.from('commands')
-    .select('*')
-    .eq('machine_id', selectedMachine.id)
-    .order('created_at', { ascending: false })
-    .limit(5);
-
+  const { data: cmds } = await sb.from('commands').select('*')
+    .eq('machine_id', selectedMachine.id).order('created_at',{ascending:false}).limit(5);
   const rcEl = document.getElementById('recent-commands');
-  if (rcEl) {
-    if (!cmds || cmds.length === 0) {
-      rcEl.innerHTML = '<div class="empty-state">Aucune commande récente</div>';
-    } else {
-      rcEl.innerHTML = cmds.map(c => `
-        <div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
-          <span style="color:${c.status === 'done' ? 'var(--green)' : c.status === 'error' ? 'var(--red)' : 'var(--yellow)'}">●</span>
-          <code style="flex:1;font-size:11px;color:var(--text)">${c.command}</code>
-          <span style="color:var(--muted);font-size:10px">${timeAgo(c.created_at)}</span>
-        </div>
-      `).join('');
-    }
-  }
+  if (rcEl) rcEl.innerHTML = cmds?.length ? cmds.map(c => `
+    <div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center">
+      <span style="color:${c.status==='done'?'var(--green)':c.status==='error'?'var(--red)':'var(--yellow)'}">●</span>
+      <code style="flex:1;font-size:11px;color:var(--text)">${escHtml(c.command)}</code>
+      <span style="color:var(--muted);font-size:10px">${timeAgo(c.created_at)}</span>
+    </div>`).join('') : '<div class="empty-state">Aucune commande récente</div>';
 }
 
 function renderCpuChart() {
   const canvas = document.getElementById('cpu-chart');
   if (!canvas) return;
   if (cpuChart) cpuChart.destroy();
-  const ctx = canvas.getContext('2d');
-  cpuChart = new Chart(ctx, {
+  cpuChart = new Chart(canvas.getContext('2d'), {
     type: 'line',
-    data: {
-      labels: cpuHistory.map(() => ''),
-      datasets: [{
-        data: cpuHistory,
-        borderColor: '#00d4ff',
-        borderWidth: 1.5,
-        backgroundColor: 'rgba(0,212,255,0.05)',
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: {
-          min: 0, max: 100,
-          grid: { color: '#1e2d38' },
-          ticks: { color: '#4a6272', font: { family: 'JetBrains Mono', size: 10 }, callback: v => v + '%' }
-        },
-        x: { display: false }
-      },
-      plugins: { legend: { display: false } }
-    }
+    data: { labels: cpuHistory.map(()=>''), datasets:[{ data:cpuHistory, borderColor:'#00d4ff', borderWidth:1.5, backgroundColor:'rgba(0,212,255,0.05)', fill:true, tension:0.3, pointRadius:0 }] },
+    options: { responsive:true, maintainAspectRatio:false, animation:false,
+      scales: { y:{ min:0, max:100, grid:{color:'#1e2d38'}, ticks:{color:'#4a6272',font:{family:'JetBrains Mono',size:10},callback:v=>v+'%'} }, x:{display:false} },
+      plugins: { legend:{display:false} } }
   });
 }
 
@@ -934,37 +417,28 @@ async function loadTerminal(el) {
       <div class="terminal">
         <div class="terminal-output" id="terminal-output">
           <div class="info-line"># Terminal distant — ${selectedMachine.name}</div>
-          <div class="info-line"># Les commandes s'exécutent via cmd.exe sur la machine distante</div>
-          <br>
+          <div class="info-line"># Commandes spéciales : tasklist | kill:PID</div><br>
         </div>
         <div class="terminal-input-row">
-          <span class="terminal-prompt">${selectedMachine.hostname}&gt;</span>
-          <input type="text" class="terminal-input" id="term-input"
-            placeholder="ipconfig /all"
+          <span class="terminal-prompt">${escHtml(selectedMachine.hostname)}&gt;</span>
+          <input type="text" class="terminal-input" id="term-input" placeholder="ipconfig /all"
             onkeydown="if(event.key==='Enter') sendCommand()">
           <button class="btn-run" onclick="sendCommand()">RUN</button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
   await refreshCommands();
 }
 
 async function refreshCommands() {
-  const { data: cmds } = await sb.from('commands')
-    .select('*')
-    .eq('machine_id', selectedMachine.id)
-    .order('created_at', { ascending: true })
-    .limit(50);
-
+  const { data: cmds } = await sb.from('commands').select('*')
+    .eq('machine_id', selectedMachine.id).order('created_at',{ascending:true}).limit(50);
   const out = document.getElementById('terminal-output');
   if (!out) return;
-  out.innerHTML = '<div class="info-line"># Terminal distant — ' + selectedMachine.name + '</div><br>';
+  out.innerHTML = `<div class="info-line"># ${selectedMachine.name}</div><br>`;
   cmds?.forEach(c => {
-    out.innerHTML += `<div class="cmd-line">&gt; ${c.command} <span style="font-size:10px;color:var(--muted)">[${c.status}]</span></div>`;
-    if (c.output) {
-      out.innerHTML += `<pre style="white-space:pre-wrap;word-break:break-all;color:${c.status === 'error' ? 'var(--red)' : 'var(--green)'};font-size:11px">${escHtml(c.output)}</pre>`;
-    }
+    out.innerHTML += `<div class="cmd-line">&gt; ${escHtml(c.command)} <span style="font-size:10px;color:var(--muted)">[${c.status}]</span></div>`;
+    if (c.output) out.innerHTML += `<pre style="white-space:pre-wrap;word-break:break-all;color:${c.status==='error'?'var(--red)':'var(--green)'};font-size:11px">${escHtml(c.output.substring(0,4000))}</pre>`;
     out.innerHTML += '<br>';
   });
   out.scrollTop = out.scrollHeight;
@@ -975,21 +449,156 @@ async function sendCommand() {
   const cmd = input.value.trim();
   if (!cmd) return;
   input.value = '';
-
-  await sb.from('commands').insert({
-    machine_id: selectedMachine.id,
-    command: cmd,
-    status: 'pending'
-  });
-
+  await sb.from('commands').insert({ machine_id: selectedMachine.id, command: cmd, status: 'pending' });
   const out = document.getElementById('terminal-output');
-  if (out) {
-    out.innerHTML += `<div class="cmd-line">&gt; ${escHtml(cmd)} <span style="color:var(--yellow)">[envoyé...]</span></div>`;
-    out.scrollTop = out.scrollHeight;
-  }
-
+  if (out) { out.innerHTML += `<div class="cmd-line">&gt; ${escHtml(cmd)} <span style="color:var(--yellow)">[envoyé...]</span></div>`; out.scrollTop = out.scrollHeight; }
   setTimeout(refreshCommands, 3000);
   setTimeout(refreshCommands, 7000);
+}
+
+// ============================================================
+// TASK MANAGER
+// ============================================================
+async function loadTaskManager(el) {
+  el.innerHTML = `
+    <div class="content-section">
+      <div class="section-header">
+        <span class="section-title">GESTIONNAIRE DE TÂCHES</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sm" onclick="refreshTaskManager()" id="tm-refresh-btn">↺ ACTUALISER</button>
+          <span class="tm-count" id="tm-status">—</span>
+        </div>
+      </div>
+      <div class="tm-toolbar">
+        <input class="tm-search" id="tm-search" placeholder="Filtrer par nom de processus..."
+          oninput="tmFilter=this.value.toLowerCase();renderTmTable()">
+      </div>
+      <div class="tm-table-wrap">
+        <table class="data-table" id="tm-table">
+          <thead>
+            <tr>
+              <th onclick="tmSortBy('pid')"       id="th-pid">PID</th>
+              <th onclick="tmSortBy('name')"      id="th-name">Processus</th>
+              <th onclick="tmSortBy('mem_mb')"    id="th-mem_mb">RAM (MB)</th>
+              <th onclick="tmSortBy('threads')"   id="th-threads">Threads</th>
+              <th onclick="tmSortBy('user')"      id="th-user">Utilisateur</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tm-body">
+            <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">Cliquez sur Actualiser pour charger les processus</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  if (tmProcesses.length > 0) renderTmTable();
+}
+
+async function refreshTaskManager() {
+  const btn = document.getElementById('tm-refresh-btn');
+  const status = document.getElementById('tm-status');
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  if (status) status.textContent = 'Chargement...';
+
+  // Envoyer la commande spéciale 'tasklist'
+  const { data: cmd } = await sb.from('commands').insert({
+    machine_id: selectedMachine.id,
+    command: 'tasklist',
+    status: 'pending'
+  }).select().single();
+
+  if (!cmd) {
+    if (status) status.textContent = 'Erreur envoi';
+    if (btn) { btn.disabled = false; btn.textContent = '↺ ACTUALISER'; }
+    return;
+  }
+
+  // Attendre le résultat (max 15s)
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    const { data: res } = await sb.from('commands').select('*').eq('id', cmd.id).single();
+    if (res?.status === 'done' && res.output) {
+      try {
+        tmProcesses = JSON.parse(res.output);
+        renderTmTable();
+        if (status) status.textContent = `${tmProcesses.length} processus`;
+      } catch { if (status) status.textContent = 'Erreur parsing'; }
+      break;
+    }
+    if (res?.status === 'error') {
+      if (status) status.textContent = 'Erreur: ' + res.output;
+      break;
+    }
+    if (status) status.textContent = `Attente... ${i+1}s`;
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '↺ ACTUALISER'; }
+}
+
+function tmSortBy(col) {
+  if (tmSort.col === col) {
+    tmSort.dir = tmSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    tmSort.col = col;
+    tmSort.dir = col === 'name' || col === 'user' ? 'asc' : 'desc';
+  }
+  renderTmTable();
+}
+
+function renderTmTable() {
+  const tbody = document.getElementById('tm-body');
+  if (!tbody) return;
+
+  // Mettre à jour les headers
+  ['pid','name','mem_mb','threads','user'].forEach(c => {
+    const th = document.getElementById('th-' + c);
+    if (!th) return;
+    th.className = tmSort.col === c ? ('sorted-' + tmSort.dir) : '';
+  });
+
+  let procs = [...tmProcesses];
+
+  // Filtrer
+  if (tmFilter) procs = procs.filter(p => p.name.toLowerCase().includes(tmFilter) || String(p.pid).includes(tmFilter));
+
+  // Trier
+  procs.sort((a, b) => {
+    const av = a[tmSort.col] ?? '', bv = b[tmSort.col] ?? '';
+    if (typeof av === 'number') return tmSort.dir === 'asc' ? av - bv : bv - av;
+    return tmSort.dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+  });
+
+  const maxMem = Math.max(...procs.map(p => p.mem_mb), 1);
+
+  const tmCount = document.getElementById('tm-status');
+  if (tmCount) tmCount.textContent = `${procs.length} / ${tmProcesses.length} processus`;
+
+  tbody.innerHTML = procs.map(p => `
+    <tr>
+      <td class="col-num">${p.pid}</td>
+      <td>${escHtml(p.name)}</td>
+      <td class="col-num">
+        ${p.mem_mb}
+        <span class="mem-bar" style="width:${Math.max(2, Math.round(p.mem_mb / maxMem * 60))}px"></span>
+      </td>
+      <td class="col-num">${p.threads}</td>
+      <td style="font-size:11px;color:var(--muted)">${escHtml(p.user || '—')}</td>
+      <td><button class="kill-btn" onclick="killProcess(${p.pid},'${escHtml(p.name)}')">KILL</button></td>
+    </tr>`).join('');
+}
+
+async function killProcess(pid, name) {
+  if (!confirm(`Tuer le processus ${name} (PID ${pid}) ?`)) return;
+  await sb.from('commands').insert({
+    machine_id: selectedMachine.id,
+    command: `kill:${pid}`,
+    status: 'pending'
+  });
+  // Retirer localement immédiatement
+  tmProcesses = tmProcesses.filter(p => p.pid !== pid);
+  renderTmTable();
+  // Rafraîchir après quelques secondes
+  setTimeout(refreshTaskManager, 4000);
 }
 
 // ============================================================
@@ -998,96 +607,53 @@ async function sendCommand() {
 async function loadFiles(el) {
   el.innerHTML = `
     <div class="content-section">
-      <div class="section-header">
-        <span class="section-title">GESTIONNAIRE DE FICHIERS</span>
-      </div>
+      <div class="section-header"><span class="section-title">GESTIONNAIRE DE FICHIERS</span></div>
       <div class="file-nav">
         <input type="text" class="file-path-input" id="file-path" value="C:\\Users" placeholder="C:\\chemin\\vers\\dossier">
         <button class="btn-sm" onclick="listDir()">LISTER</button>
       </div>
-      <div id="file-content">
-        <div class="empty-state">Entrez un chemin et cliquez sur LISTER</div>
-      </div>
-    </div>
-  `;
+      <div id="file-content"><div class="empty-state">Entrez un chemin et cliquez sur LISTER</div></div>
+    </div>`;
 }
 
 async function listDir() {
   const path = document.getElementById('file-path').value.trim();
   if (!path) return;
-
   const fc = document.getElementById('file-content');
   fc.innerHTML = '<div class="empty-state">Chargement...</div>';
-
-  // Créer l'opération
-  const { data: op } = await sb.from('file_operations').insert({
-    machine_id: selectedMachine.id,
-    operation: 'list',
-    path,
-    status: 'pending'
-  }).select().single();
-
-  // Attendre le résultat (max 15 secondes)
+  const { data: op } = await sb.from('file_operations').insert({ machine_id:selectedMachine.id, operation:'list', path, status:'pending' }).select().single();
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 1000));
     const { data: res } = await sb.from('file_operations').select('*').eq('id', op.id).single();
-    if (res?.status === 'done') {
-      const items = JSON.parse(res.result || '[]');
-      renderFileList(items, path);
-      return;
-    }
-    if (res?.status === 'error') {
-      fc.innerHTML = `<div class="empty-state" style="color:var(--red)">Erreur: ${JSON.parse(res.result || '{}').error}</div>`;
-      return;
-    }
+    if (res?.status === 'done')  { renderFileList(JSON.parse(res.result||'[]'), path); return; }
+    if (res?.status === 'error') { fc.innerHTML = `<div class="empty-state" style="color:var(--red)">Erreur: ${JSON.parse(res.result||'{}').error}</div>`; return; }
   }
-  fc.innerHTML = '<div class="empty-state" style="color:var(--yellow)">Timeout — la machine n\'a pas répondu</div>';
+  fc.innerHTML = '<div class="empty-state" style="color:var(--yellow)">Timeout</div>';
 }
 
 function renderFileList(items, currentPath) {
   const fc = document.getElementById('file-content');
   if (!fc) return;
-  if (items.length === 0) {
-    fc.innerHTML = '<div class="empty-state">Dossier vide</div>';
-    return;
-  }
+  if (!items.length) { fc.innerHTML = '<div class="empty-state">Dossier vide</div>'; return; }
   fc.innerHTML = `
-    <table class="file-table">
-      <thead><tr>
-        <th>Nom</th>
-        <th>Taille</th>
-        <th>Modifié</th>
-        <th></th>
-      </tr></thead>
-      <tbody>
-        ${items.map(f => `
-          <tr onclick="${f.is_dir ? `navTo('${currentPath}\\\\${f.name}')` : ''}">
-            <td><span class="file-icon">${f.is_dir ? '📁' : '📄'}</span>${escHtml(f.name)}</td>
-            <td class="file-size">${f.is_dir ? '—' : fmtSize(f.size)}</td>
-            <td class="file-size">${new Date(f.modified).toLocaleDateString('fr-FR')}</td>
-            <td>
-              ${!f.is_dir ? `<button class="btn-sm" onclick="event.stopPropagation();deleteFile('${currentPath}\\\\${f.name}')">DEL</button>` : ''}
-            </td>
-          </tr>
-        `).join('')}
+    <table class="data-table">
+      <thead><tr><th>Nom</th><th>Taille</th><th>Modifié</th><th></th></tr></thead>
+      <tbody>${items.map(f => `
+        <tr onclick="${f.is_dir ? `navTo('${currentPath.replace(/'/g,"\\'")}\\\\${f.name.replace(/'/g,"\\'")}')` : ''}">
+          <td>${f.is_dir?'📁':'📄'} ${escHtml(f.name)}</td>
+          <td class="col-num">${f.is_dir?'—':fmtSize(f.size)}</td>
+          <td style="color:var(--muted);font-size:11px">${new Date(f.modified).toLocaleDateString('fr-FR')}</td>
+          <td>${!f.is_dir?`<button class="btn-sm" onclick="event.stopPropagation();deleteFile('${currentPath.replace(/'/g,"\\'")}\\\\${f.name.replace(/'/g,"\\'")}')">DEL</button>`:''}
+          </td>
+        </tr>`).join('')}
       </tbody>
-    </table>
-  `;
+    </table>`;
 }
 
-function navTo(path) {
-  const input = document.getElementById('file-path');
-  if (input) { input.value = path; listDir(); }
-}
-
+function navTo(path) { const i = document.getElementById('file-path'); if (i) { i.value = path; listDir(); } }
 async function deleteFile(path) {
   if (!confirm(`Supprimer : ${path} ?`)) return;
-  await sb.from('file_operations').insert({
-    machine_id: selectedMachine.id,
-    operation: 'delete',
-    path,
-    status: 'pending'
-  });
+  await sb.from('file_operations').insert({ machine_id:selectedMachine.id, operation:'delete', path, status:'pending' });
   setTimeout(listDir, 2000);
 }
 
@@ -1097,29 +663,23 @@ async function deleteFile(path) {
 async function loadAlerts(el) {
   const container = el || document.getElementById('tab-content');
   if (!container) return;
-
-  const { data: alerts } = await sb.from('alerts')
-    .select('*')
-    .eq('machine_id', selectedMachine.id)
-    .eq('acknowledged', false)
-    .order('created_at', { ascending: false })
-    .limit(30);
-
-  const html = `
+  const { data: alerts } = await sb.from('alerts').select('*')
+    .eq('machine_id', selectedMachine.id).eq('acknowledged', false)
+    .order('created_at',{ascending:false}).limit(30);
+  container.innerHTML = `
     <div class="content-section">
       <div class="section-header">
         <span class="section-title">ALERTES ACTIVES</span>
         <button class="btn-sm" onclick="ackAll()">ACK ALL</button>
       </div>
-      <div class="alert-list" id="alert-list">
+      <div class="alert-list">
         ${alerts?.length ? alerts.map(a => `
           <div class="alert-item ${a.type}">
-            <span style="font-size:18px">${a.type === 'cpu' ? '⚡' : a.type === 'ram' ? '💾' : '💿'}</span>
-            <div class="alert-msg">${a.message}</div>
+            <span style="font-size:18px">${a.type==='cpu'?'⚡':a.type==='ram'?'💾':'💿'}</span>
+            <div class="alert-msg">${escHtml(a.message)}</div>
             <span class="alert-time">${timeAgo(a.created_at)}</span>
             <button class="alert-ack" onclick="ackAlert(${a.id})">ACK</button>
-          </div>
-        `).join('') : '<div class="empty-state">Aucune alerte active</div>'}
+          </div>`).join('') : '<div class="empty-state">Aucune alerte active</div>'}
       </div>
     </div>
     <div class="content-section">
@@ -1127,81 +687,59 @@ async function loadAlerts(el) {
       <div id="alert-rules"></div>
       <div style="margin-top:12px;display:flex;gap:8px">
         <select id="rule-metric" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:var(--font-mono);font-size:12px;padding:7px">
-          <option value="cpu">CPU</option>
-          <option value="ram">RAM</option>
-          <option value="disk">DISQUE</option>
+          <option value="cpu">CPU</option><option value="ram">RAM</option><option value="disk">DISQUE</option>
         </select>
         <input type="number" id="rule-threshold" placeholder="Seuil %" min="1" max="100"
           style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);font-family:var(--font-mono);font-size:12px;padding:7px;width:100px">
         <button class="btn-sm" onclick="addRule()">AJOUTER</button>
       </div>
-    </div>
-  `;
-  container.innerHTML = html;
+    </div>`;
   loadRules();
 }
 
-async function ackAlert(id) {
-  await sb.from('alerts').update({ acknowledged: true }).eq('id', id);
-  loadAlerts();
-}
-
-async function ackAll() {
-  await sb.from('alerts').update({ acknowledged: true }).eq('machine_id', selectedMachine.id);
-  loadAlerts();
-}
+async function ackAlert(id) { await sb.from('alerts').update({acknowledged:true}).eq('id',id); loadAlerts(); }
+async function ackAll() { await sb.from('alerts').update({acknowledged:true}).eq('machine_id',selectedMachine.id); loadAlerts(); }
 
 async function loadRules() {
-  const { data: rules } = await sb.from('alert_rules')
-    .select('*')
-    .eq('machine_id', selectedMachine.id);
-
+  const { data: rules } = await sb.from('alert_rules').select('*').eq('machine_id', selectedMachine.id);
   const el = document.getElementById('alert-rules');
   if (!el) return;
   el.innerHTML = rules?.map(r => `
     <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="width:60px;font-size:11px;text-transform:uppercase">${r.metric}</span>
       <span>Seuil: <strong>${r.threshold}%</strong></span>
-      <span style="color:${r.enabled ? 'var(--green)' : 'var(--muted)'}">${r.enabled ? '● ACTIF' : '○ INACTIF'}</span>
+      <span style="color:${r.enabled?'var(--green)':'var(--muted)'}">${r.enabled?'● ACTIF':'○ INACTIF'}</span>
       <button class="btn-sm" onclick="deleteRule('${r.id}')">SUPPR</button>
-    </div>
-  `).join('') || '<div style="color:var(--muted);font-size:11px">Aucune règle</div>';
+    </div>`).join('') || '<div style="color:var(--muted);font-size:11px">Aucune règle</div>';
 }
-
 async function addRule() {
   const metric = document.getElementById('rule-metric').value;
   const threshold = parseFloat(document.getElementById('rule-threshold').value);
   if (!threshold || threshold < 1 || threshold > 100) return;
-  await sb.from('alert_rules').insert({ machine_id: selectedMachine.id, metric, threshold, enabled: true });
+  await sb.from('alert_rules').insert({ machine_id:selectedMachine.id, metric, threshold, enabled:true });
   loadRules();
 }
-
-async function deleteRule(id) {
-  await sb.from('alert_rules').delete().eq('id', id);
-  loadRules();
-}
+async function deleteRule(id) { await sb.from('alert_rules').delete().eq('id',id); loadRules(); }
 
 // ============================================================
 // UTILS
 // ============================================================
 function timeAgo(ts) {
   if (!ts) return '—';
-  const diff = (Date.now() - new Date(ts)) / 1000;
-  if (diff < 60) return `${Math.round(diff)}s`;
-  if (diff < 3600) return `${Math.round(diff/60)}m`;
-  if (diff < 86400) return `${Math.round(diff/3600)}h`;
-  return `${Math.round(diff/86400)}j`;
+  const d = (Date.now() - new Date(ts)) / 1000;
+  if (d < 60)    return `${Math.round(d)}s`;
+  if (d < 3600)  return `${Math.round(d/60)}m`;
+  if (d < 86400) return `${Math.round(d/3600)}h`;
+  return `${Math.round(d/86400)}j`;
 }
-
-function fmtSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
-  if (bytes < 1073741824) return (bytes/1048576).toFixed(1) + ' MB';
-  return (bytes/1073741824).toFixed(2) + ' GB';
+function fmtSize(b) {
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
 }
-
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 </body>
