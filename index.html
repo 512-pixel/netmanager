@@ -692,7 +692,14 @@ async function refreshData() {
 async function loadMachines() {
   const { data } = await sb.from('machines').select('*').order('name');
   if (!data) return;
-  machines = data;
+
+  // Considérer offline si last_seen > 20 secondes
+  const now = Date.now();
+  machines = data.map(m => {
+    const seenAgo = (now - new Date(m.last_seen)) / 1000;
+    if (seenAgo > 20 && m.status === 'online') m.status = 'offline';
+    return m;
+  });
 
   const list = document.getElementById('machine-list');
   const online = machines.filter(m => m.status === 'online').length;
