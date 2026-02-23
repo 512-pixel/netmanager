@@ -293,8 +293,8 @@ function selectMachine(id) {
 // ================================================================
 // SHELL
 // ================================================================
-const TABS = ['overview','terminal','tasks','files','alerts'];
-const TLBL = ['VUE D\'ENSEMBLE','TERMINAL','TÂCHES','FICHIERS','ALERTES'];
+const TABS = ['overview','terminal','tasks','screen','files','alerts'];
+const TLBL = ['VUE D\'ENSEMBLE','TERMINAL','TÂCHES','ÉCRAN','FICHIERS','ALERTES'];
 
 function renderShell() {
   const m = selectedMachine;
@@ -339,8 +339,72 @@ async function loadTab() {
   if (currentTab==='overview') await loadOverview(el);
   if (currentTab==='terminal') await loadTerminal(el);
   if (currentTab==='tasks')    await loadTasks(el);
+  if (currentTab==='screen')   await loadScreen(el);
   if (currentTab==='files')    await loadFiles(el);
   if (currentTab==='alerts')   await loadAlerts(el);
+}
+
+// ================================================================
+// SCREEN (CAPTURE)
+// ================================================================
+async function loadScreen(el) {
+  el.innerHTML = `
+    <div class="content-section">
+      <div class="section-header">
+        <span class="section-title">CAPTURE D'ÉCRAN</span>
+        <button class="btn-sm" onclick="captureScreen()">CAPTURER L'ÉCRAN</button>
+      </div>
+      <div id="screen-status" class="empty-state">Cliquez sur « CAPTURER L'ÉCRAN ».</div>
+      <div id="screen-image-wrap" style="margin-top:12px;text-align:center;display:none;">
+        <img id="screen-image" src="" style="max-width:100%;border-radius:4px;border:1px solid var(--border2);" />
+      </div>
+    </div>`;
+}
+
+async function captureScreen() {
+  const statusEl = document.getElementById('screen-status');
+  const imgWrap = document.getElementById('screen-image-wrap');
+  const imgEl = document.getElementById('screen-image');
+  if (!statusEl || !imgEl || !imgWrap) return;
+  statusEl.className = 'empty-state';
+  statusEl.style.color = 'var(--muted)';
+  statusEl.textContent = 'Capture en cours...';
+  imgWrap.style.display = 'none';
+
+  const { data: op } = await sb.from('file_operations')
+    .insert({ machine_id: selectedMachine.id, operation: 'screenshot', path: '', status: 'pending' })
+    .select().single();
+  if (!op) {
+    statusEl.style.color = 'var(--red)';
+    statusEl.textContent = 'Erreur lors de la création de la demande de capture.';
+    return;
+  }
+
+  const maxWait = 60;
+  for (let waited = 0; waited < maxWait; waited++) {
+    await sleep(1000);
+    const { data: res } = await sb.from('file_operations').select('*').eq('id', op.id).single();
+    if (!res) continue;
+    const result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {};
+
+    if (res.status === 'running') {
+      statusEl.textContent = 'Capture en cours...';
+      continue;
+    }
+    if (res.status === 'done' && result.link) {
+      statusEl.textContent = 'Capture terminée.';
+      imgEl.src = result.link;
+      imgWrap.style.display = 'block';
+      return;
+    }
+    if (res.status === 'error') {
+      statusEl.style.color = 'var(--red)';
+      statusEl.innerHTML = `Erreur : ${esc(result.error || 'inconnue')}`;
+      return;
+    }
+  }
+  statusEl.style.color = 'var(--yellow)';
+  statusEl.textContent = 'Timeout (vérifiez que l\'agent est en ligne).';
 }
 
 // ================================================================
