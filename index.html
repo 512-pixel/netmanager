@@ -121,6 +121,12 @@
   .file-nav { display:flex; gap:8px; margin-bottom:10px; }
   .file-path-input { flex:1; background:var(--surface2); border:1px solid var(--border2); color:var(--text); font-family:var(--font-mono); font-size:12px; padding:7px 10px; outline:none; }
   .file-path-input:focus { border-color:var(--accent); }
+  .download-status { margin-bottom:12px; padding:12px; background:var(--surface2); border:1px solid var(--border2); border-radius:4px; font-size:12px; }
+  .progress-bar-wrap { margin:8px 0; height:8px; background:var(--surface); border-radius:4px; overflow:hidden; }
+  .progress-bar-fill { height:100%; background:var(--accent); transition:width .2s; }
+  .download-link-box { display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .download-link-box a { color:var(--accent); word-break:break-all; }
+  .download-link-box .btn-sm { flex-shrink:0; }
 
   /* ALERTS */
   .alert-list { display:flex; flex-direction:column; gap:6px; }
@@ -644,6 +650,7 @@ async function loadFiles(el) {
         <input class="file-path-input" id="file-path" value="C:\\Users" placeholder="C:\\chemin">
         <button class="btn-sm" onclick="listDir()">LISTER</button>
       </div>
+      <div id="file-download-status" class="download-status" style="display:none;"></div>
       <div id="file-content"><div class="empty-state">Entrez un chemin et cliquez sur LISTER</div></div>
     </div>`;
 }
@@ -677,7 +684,7 @@ function renderFiles(items, cur) {
           <td>${f.is_dir?'📁':'📄'} ${esc(f.name)}</td>
           <td class="num">${f.is_dir?'—':fmtSize(f.size)}</td>
           <td style="color:var(--muted);font-size:11px">${new Date(f.modified).toLocaleDateString('fr-FR')}</td>
-          <td>${!f.is_dir?`<button class="btn-sm" onclick="event.stopPropagation();delFile(${JSON.stringify(cur+'\\'+f.name)})">DEL</button>`:''}</td>
+          <td>${!f.is_dir?`<button class="btn-sm" onclick="event.stopPropagation();downloadFile(${JSON.stringify(cur+'\\'+f.name)})">Télécharger</button><button class="btn-sm" onclick="event.stopPropagation();delFile(${JSON.stringify(cur+'\\'+f.name)})">DEL</button>`:''}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -688,6 +695,48 @@ async function delFile(path) {
   if (!confirm(`Supprimer : ${path} ?`)) return;
   await sb.from('file_operations').insert({ machine_id:selectedMachine.id, operation:'delete', path, status:'pending' });
   setTimeout(listDir, 2000);
+}
+
+async function downloadFile(path) {
+  const statusEl = document.getElementById('file-download-status');
+  if (!statusEl) return;
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<span>Demande envoyée, en attente de l\'agent...</span>';
+  const { data: op } = await sb.from('file_operations')
+    .insert({ machine_id: selectedMachine.id, operation: 'download', path, status: 'pending' })
+    .select().single();
+  if (!op) { statusEl.innerHTML = '<span style="color:var(--red)">Erreur lors de la création de la demande.</span>'; return; }
+  const maxWait = 300;
+  const pollInterval = 2000;
+  for (let waited = 0; waited < maxWait; waited += pollInterval / 1000) {
+    await sleep(pollInterval);
+    const { data: res } = await sb.from('file_operations').select('*').eq('id', op.id).single();
+    if (!res) continue;
+    const result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {};
+    if (res.status === 'running' && result.progress != null) {
+      const pct = Math.min(100, result.progress);
+      statusEl.innerHTML = `
+        <span>Upload en cours...</span>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+        <span style="color:var(--muted)">${pct}%</span>`;
+      continue;
+    }
+    if (res.status === 'done' && result.link) {
+      statusEl.innerHTML = `
+        <span>Lien prêt :</span>
+        <div class="download-link-box">
+          <a href="${esc(result.link)}" target="_blank" rel="noopener">${esc(result.link)}</a>
+          <button class="btn-sm" onclick="navigator.clipboard.writeText('${String(result.link).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Copier</button>
+          <button class="btn-sm" onclick="window.open('${String(result.link).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Ouvrir</button>
+        </div>`;
+      return;
+    }
+    if (res.status === 'error') {
+      statusEl.innerHTML = `<span style="color:var(--red)">Erreur : ${esc(result.error || 'inconnue')}</span>`;
+      return;
+    }
+  }
+  statusEl.innerHTML = '<span style="color:var(--yellow)">Timeout (vérifiez que l\'agent est en ligne).</span>';
 }
 
 // ================================================================
