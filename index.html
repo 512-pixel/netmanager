@@ -363,48 +363,87 @@ async function loadScreen(el) {
 
 async function captureScreen() {
   const statusEl = document.getElementById('screen-status');
-  const imgWrap = document.getElementById('screen-image-wrap');
-  const imgEl = document.getElementById('screen-image');
+  const imgWrap  = document.getElementById('screen-image-wrap');
+  const imgEl    = document.getElementById('screen-image');
+  const btn      = document.querySelector('button[onclick="captureScreen()"]');
   if (!statusEl || !imgEl || !imgWrap) return;
-  statusEl.className = 'empty-state';
+
+  statusEl.className = '';
   statusEl.style.color = 'var(--muted)';
-  statusEl.textContent = 'Capture en cours...';
+  statusEl.style.padding = '12px 0';
+  statusEl.textContent = 'Envoi de la demande...';
   imgWrap.style.display = 'none';
+  if (btn) btn.disabled = true;
 
-  const { data: op } = await sb.from('file_operations')
-    .insert({ machine_id: selectedMachine.id, operation: 'screenshot', path: '', status: 'pending' })
-    .select().single();
-  if (!op) {
-    statusEl.style.color = 'var(--red)';
-    statusEl.textContent = 'Erreur lors de la création de la demande de capture.';
-    return;
-  }
-
-  const maxWait = 60;
-  for (let waited = 0; waited < maxWait; waited++) {
-    await sleep(1000);
-    const { data: res } = await sb.from('file_operations').select('*').eq('id', op.id).single();
-    if (!res) continue;
-    const result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {};
-
-    if (res.status === 'running') {
-      statusEl.textContent = 'Capture en cours...';
-      continue;
-    }
-    if (res.status === 'done' && result.link) {
-      statusEl.textContent = 'Capture terminée.';
-      imgEl.src = result.link;
-      imgWrap.style.display = 'block';
-      return;
-    }
-    if (res.status === 'error') {
+  try {
+    // Vérifier que la session est toujours active
+    const { data: session } = await sb.auth.getSession();
+    if (!session?.session) {
       statusEl.style.color = 'var(--red)';
-      statusEl.innerHTML = `Erreur : ${esc(result.error || 'inconnue')}`;
+      statusEl.textContent = 'Session expirée — veuillez vous reconnecter.';
       return;
     }
+
+    const { data: op, error: insertErr } = await sb.from('file_operations')
+      .insert({ machine_id: selectedMachine.id, operation: 'screenshot', path: '', status: 'pending' })
+      .select()
+      .single();
+
+    if (insertErr || !op) {
+      statusEl.style.color = 'var(--red)';
+      const msg = insertErr?.message || 'Réponse vide de Supabase';
+      statusEl.innerHTML = `Erreur insert : <code style="color:var(--yellow)">${esc(msg)}</code><br>
+        <span style="font-size:11px;color:var(--muted)">Vérifiez les policies RLS sur la table <strong>file_operations</strong> (INSERT pour authenticated).</span>`;
+      console.error('[captureScreen] insert error:', insertErr);
+      return;
+    }
+
+    statusEl.style.color = 'var(--muted)';
+    statusEl.textContent = 'Demande envoyée, en attente de l\'agent...';
+
+    const maxWait = 60;
+    for (let waited = 0; waited < maxWait; waited++) {
+      await sleep(1000);
+      const { data: res, error: pollErr } = await sb.from('file_operations')
+        .select('*').eq('id', op.id).single();
+
+      if (pollErr || !res) continue;
+
+      let result = {};
+      try { result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {}; } catch {}
+
+      if (res.status === 'pending') {
+        statusEl.textContent = `En attente de l'agent... (${waited + 1}s)`;
+        continue;
+      }
+      if (res.status === 'running') {
+        statusEl.style.color = 'var(--accent)';
+        statusEl.textContent = 'Capture en cours, upload...';
+        continue;
+      }
+      if (res.status === 'done' && result.link) {
+        statusEl.style.color = 'var(--green)';
+        statusEl.innerHTML = `Capture terminée. <a href="${esc(result.link)}" target="_blank" rel="noopener" style="color:var(--accent)">Ouvrir dans un nouvel onglet</a>`;
+        imgEl.src = result.link;
+        imgWrap.style.display = 'block';
+        return;
+      }
+      if (res.status === 'error') {
+        statusEl.style.color = 'var(--red)';
+        statusEl.innerHTML = `Erreur agent : ${esc(result.error || 'inconnue')}`;
+        return;
+      }
+    }
+
+    statusEl.style.color = 'var(--yellow)';
+    statusEl.textContent = 'Timeout — vérifiez que l\'agent est en ligne et que le service Windows tourne.';
+  } catch (e) {
+    statusEl.style.color = 'var(--red)';
+    statusEl.textContent = 'Exception inattendue : ' + (e.message || e);
+    console.error('[captureScreen] unexpected error:', e);
+  } finally {
+    if (btn) btn.disabled = false;
   }
-  statusEl.style.color = 'var(--yellow)';
-  statusEl.textContent = 'Timeout (vérifiez que l\'agent est en ligne).';
 }
 
 // ================================================================
