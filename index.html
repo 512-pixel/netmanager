@@ -684,7 +684,16 @@ function renderFiles(items, cur) {
           <td>${f.is_dir?'📁':'📄'} ${esc(f.name)}</td>
           <td class="num">${f.is_dir?'—':fmtSize(f.size)}</td>
           <td style="color:var(--muted);font-size:11px">${new Date(f.modified).toLocaleDateString('fr-FR')}</td>
-          <td>${!f.is_dir?`<button class="btn-sm" onclick="event.stopPropagation();downloadFile(${JSON.stringify(cur+'\\'+f.name)})">Télécharger</button><button class="btn-sm" onclick="event.stopPropagation();delFile(${JSON.stringify(cur+'\\'+f.name)})">DEL</button>`:''}</td>
+          <td>${!f.is_dir?`
+            <button
+              class="btn-sm"
+              data-path="${esc(cur+'\\'+f.name)}"
+              onclick="event.stopPropagation();downloadFile(this.getAttribute('data-path'))"
+            >Télécharger</button>
+            <button
+              class="btn-sm"
+              onclick="event.stopPropagation();delFile(${JSON.stringify(cur+'\\'+f.name)})"
+            >DEL</button>`:''}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;
